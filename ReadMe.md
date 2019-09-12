@@ -158,6 +158,45 @@ try(PreparedStatement statement = connection.prepareStatement(sql)) {
 
 - SQL 표준이 다 달라서 사용한는 SQL 이 변경될 경우 쿼리 실행에 문제가 발생합니다.
 
+# ORM Object-Relation Mapping
+
+> JDBC 사용
+
+~~~
+try(Connection connection = DriverManager.getConnection(url, username, password))  {
+    String sql = "INSERT INTO ACCOUNT VALUES(1, 'jjunpro', 'pwd');";
+    try(PreparedStatement statement = connection.prepareStatement(sql)) {
+        statement.execute();
+    }
+}
+~~~
+
+> 도메인 모델 사용
+
+~~~
+Account account = new Account("jjunpro", "pwd");
+accountRepository.save(account);
+~~~
+
+- JDBC 대신 도메인 모델을 사용하려는 이유
+    - 객체 지향 프로그래밍의 장점을 활용하기 좋음
+    - 각종 디자인 패턴
+    - 코드 재사용
+    - 비즈니스 로직 구현 및 테스트 편리
+
+ORM은 어플리케이션의 클래스와 SQL 데이터베이스의 테이블 사이의 `맵핑 정보를 기술한 메타데이터`를 사용하여, 자바 애플리케이션의 객체를 SQL 데이터베이스의 테이블에 `자동으로 (또 깨끗하게) 영속화 해주는 기술`입니다.
+
+# ORM : 패러다임 불일치
+
+객체를 릴레이션에 맴핑하려니 발생하는 문제들과 해결책
+
+밀도(Granularity) 문제
+
+|---|---|
+|객체|릴레이션|
+|다양한 크기의 객체를 만들 수 있음|테이블|
+|커스텀한 타입 만들기 쉬움|기본 데이터 타입 (UDT는 비추)|
+
 # 링크
 
 https://subicura.com/2017/01/19/docker-guide-for-beginners-1.html - [doker란?]
