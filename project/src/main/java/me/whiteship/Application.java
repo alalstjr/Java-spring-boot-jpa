@@ -16,7 +16,8 @@ public class Application {
         try(Connection connection = DriverManager.getConnection(url, username, password))  {
             System.out.println("connection : " + connection);
 
-            String sql = "CREATE TABLE ACCOUNT (id int, username varchar(255), password varchar(255));";
+            // String sql = "CREATE TABLE ACCOUNT (id int, username varchar(255), password varchar(255));";
+            String sql = "INSERT INTO ACCOUNT VALUES(1, 'jjunpro', 'pwd');";
             try(PreparedStatement statement = connection.prepareStatement(sql)) {
                 statement.execute();
             }
