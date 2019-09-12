@@ -10,6 +10,14 @@
 - [2. DB관리 Dokcer 생성](#DB관리-Dokcer-생성)
 - [3. DB 연결](#DB-연결)
     - [3-1. SQL 사용](#SQL-사용)
+- [4. ORM Object-Relation Mapping](#ORM-Object-Relation-Mapping)
+- [5. ORM : 패러다임 불일치](#ORM-:-패러다임-불일치)
+- [6. JPA 프로그래밍 프로젝트 셋팅](#JPA-프로그래밍-프로젝트-셋팅)
+    - [6-1. 자동 설정 HibemateJpaAutoConfiguration](#자동-설정-HibemateJpaAutoConfiguration)
+- [7. Domain 생성](#Domain-생성)
+    - [7-1. JPA 데이터 영속화](#JPA-데이터-영속화)
+    - [7-2. hibernate 영속화](#hibernate-영속화)
+
 
 # 관계형 데이터베이스와 자바
 
@@ -56,6 +64,14 @@ psql springjpa
 - 쿼리 
 
 > SELECT * FROM table;
+
+- docker 접속 확인
+
+> docker ps
+
+- docker 컨테이너 실행
+
+> docker start
 
 # DB 연결
 
@@ -190,12 +206,196 @@ ORM은 어플리케이션의 클래스와 SQL 데이터베이스의 테이블 �
 
 객체를 릴레이션에 맴핑하려니 발생하는 문제들과 해결책
 
-밀도(Granularity) 문제
+릴레이션 (relation) 
 
-|---|:---:|---:|
-|객체|릴레이션|
-|다양한 크기의 객체를 만들 수 있음|테이블|
-|커스텀한 타입 만들기 쉬움|기본 데이터 타입 (UDT는 비추)|
+같은 성격의 데이터들의 집합을 의미. 흔히 테이블이라고 말하는 용어와 같은 의미로 이론적인 용어. 
+릴레이션은 튜플과 에트리뷰트로 데이터를 정렬하여 관리한다. 
+
+
+- 밀도(Granularity) 문제
+    - 객체
+        - 다양한 크기의 객체를 만들 수 있음.
+        - 커스텀한 타입 만들기 쉬움.
+    - 릴레이션
+        - 테이블
+        - 기본 데이터 타입 (UDT는 비추)
+
+- 서브타입(Subtype) 문제
+    - 객체
+        - 상속 구조 만들기 쉬움.
+        - 다형성
+    - 릴레이션
+        - 테이블 상속이라는게 없음.
+        - 상속 기능을 구현했다 하더라도 표쥰 기술이 아님.
+        - 다형적인 관계를 표현할 방법이 없음.
+
+- 식별성(identity) 문제
+    - 객체
+        - 레퍼런스 동일성 (==)
+        - 인스턴스 동일성 (equais() 메소드)
+    - 릴레이션
+        - 주키 (primary key)
+
+- 관계(Association) 문제
+    - 객체
+        - 객체 레퍼런스로 관계 표현
+        - 근본적으로 "방향"이 존재한다.
+        - 다대다 관계를 가질 수 있음
+    - 릴레이션
+        - 외래키(foreign key)로 관계 표현
+        - "방향"이라는 의미가 없음. 그냥 Join 으로 아무거나 묶을 수 있음
+        -   태생적으로 다대다 관계를 못만들고, 조인 테이블 또는 링크 테이블을 사용해서 두개의 1대다 관계로 풀어야 함.
+
+- 데이터 네비게이션(Navigation)의 문제
+    - 객체
+        - 레퍼런스를 이용해서 다른 객체로 이동 가능.
+        - 콜렉션을 순회할 수도 있음.
+    - 릴레이션
+        - 하지만 그런 방식은 릴레이션에서 데이터를 조회하는데 있어서 매우 비효율적이다.
+        - 데이터베이스에 요청을 적게 할 수록 성능이 좋다. 따라서 Join을 쓴다.
+        - 하지만 너무 많이 한번에 가져오려고 해도 문제다.
+        - 그렇다고 lazy loading을 하자니 그것도 문제
+
+# JPA 프로그래밍 프로젝트 셋팅
+
+- 데이터베이스 실행
+    - PostgreSQL 도커 컨테이너 재사용
+    - docker start postgres_boot
+
+- 스프링 부트
+    - 스프링 부트 v2
+    - 스프링 프레임워크 v5
+
+- 스프링 부트 스타터 JPA
+    - JPA 프로그래밍에 필요한 의존성 추가
+        - JPA v2
+        - Hibemate v5
+    - 자동 설정 : HibemateJpaAutoConfiguration
+        - 컨테이너가 관리하는 EntityManager (프록시) 빈 설정
+        - PlatformTransactionManager 빈 설정
+
+- JDBC 설정
+    - jdbc:postgresql://localhost:5432/springjpa
+    - jjunpro
+    - pass
+
+https://start.spring.io/ 링크에서 spring boot jpa 의존성을 추가하여 프로젝트를 생성 후 import 합니다.
+
+![유저-생성](./images/20190912_235447.png)
+
+gradle에 설치된 의존성을 확인하면 jpa, hibernate 가 있는것을 확인할 수 있습니다.
+
+엔티티매니저 가 JPA 스펙의 일부이고 엔티티매니저 내부적으로 hibernate를 사용합니다. 그러므로 둘다 사용 가능합니다. JPA 기반으로 코딩할 수 있고 hibernate 기반으로 도 코딩이 가능합니다. 하지만 둘다 사용하는 일은 거의 없습니다.
+
+## 자동 설정 HibemateJpaAutoConfiguration
+
+> application.properties
+
+~~~
+spring.datasource.url=jdbc:postgresql://localhost:5432/springjpa
+spring.datasource.username=jjunpro
+spring.datasource.password=pass
+
+spring.jpa.hibernate.ddl-auto=create
+~~~
+
+application.properties 에 우리가 사용하는 DB에 접근할수 있는 정보를 줘야합니다.
+
+spring.jpa.hibernate.ddl-auto 는 create 를 줘서 개발환경에 맞춰서 실행시 스키마를 새로 만들어주도록 명령합니다.
+
+# Domain 생성
+
+> Account.java
+
+~~~
+@Entity
+public class Account {
+
+    @Id
+    @GeneratedValue
+    private Long id;
+
+    @Column
+    private String username;
+
+    @Column
+    private String password;
+
+    ...getter, setter
+}
+
+~~~
+
+어노테이션 @Entity 를 선언하여 Account 라는 Domain Class을 생성합니다.
+
+`@Entity` 해당 클래스가 DB에 존재하는 Account 테이블에 맵핑이되는 Entity라고 알려주는 어노테이션 입니다.
+
+`@Id` 는 DB의 주 키의 맵핑이 되는 어노테이션
+
+`@GeneratedValue` 해당 값이 자동으로 생성되는 값이라고 알려주는 것
+
+`@Column` 해당 테이블의 컬럼에 맵핑을 알려주는 어노테이션
+
+## JPA 데이터 영속화
+
+> JpaRunner
+
+~~~
+@Component
+@Transactional
+public class JpaRunner implements ApplicationRunner {
+
+    @PersistenceContext
+    private EntityManager entityManager;
+
+    @Override
+    public void run(ApplicationArguments args) throws Exception {
+        Account account = new Account();
+        account.setUsername("new user");
+        account.setPassword("new pwd");
+
+        entityManager.persist(account);
+    }
+}
+~~~
+
+EntityManager JPA 가장 핵심적인 클래스 타입의 Bean을 주입받을 수 있습니다. 그러므로 해당 클래스가 JPA 의 핵심입니다.
+
+entityManager 클래스를 가지고 Entity 들을 `영속화` 할 수 있습니다. 즉 `데이터를 저장 한다는 의미입니다.`
+
+위에서는 persist() 메소드를 통해서 `account Entity 를 영속화`합니다.
+
+그리고 `EntityManager 과 관련된 모든 오퍼레이션 들은 한 Transactional 안에서 일어나야 합니다.` 그러므로 @Transactional 어노테이션을 상단에 추가합니다. 사용하는 해당 메소드 위에 바로 작성해도 됩니다.
+
+실행 결과를 확인해보면 정상적으로 데이터 값이 저장된 것을 확인 하였습니다.
+
+## hibernate 영속화
+
+JPA는 hibernate 를 사용합니다. 그러므로 hibernate API도 사용할 수 있습니다.
+
+hibernate 의 가장 핵심적은 API는 `Session` 입니다.
+
+~~~
+@Component
+@Transactional
+public class JpaRunner implements ApplicationRunner {
+
+    @PersistenceContext
+    private EntityManager entityManager;
+
+    @Override
+    public void run(ApplicationArguments args) throws Exception {
+        Account account = new Account();
+        account.setUsername("new user");
+        account.setPassword("hibernate");
+
+        Session session = entityManager.unwrap(Session.class);
+        session.save(account);
+    }
+}
+~~~
+
+
 
 # 링크
 
