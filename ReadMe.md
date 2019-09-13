@@ -17,6 +17,8 @@
 - [7. Domain 생성](#Domain-생성)
     - [7-1. JPA 데이터 영속화](#JPA-데이터-영속화)
     - [7-2. hibernate 영속화](#hibernate-영속화)
+- [8. JPA 엔티티 맵핑](#JPA-엔티티-맵핑)
+    - [8-1. 어노테이션 정보](#어노테이션-정보)
 
 
 # 관계형 데이터베이스와 자바
@@ -297,11 +299,29 @@ spring.datasource.username=jjunpro
 spring.datasource.password=pass
 
 spring.jpa.hibernate.ddl-auto=create
+spring.jpa.properties.hibernate.jdbc.lob.non_contextual_creation=true
+
+spring.jpa.show-sql=true
+spring.jpa.properties.hibernate.format_sql=true
 ~~~
 
 application.properties 에 우리가 사용하는 DB에 접근할수 있는 정보를 줘야합니다.
 
-spring.jpa.hibernate.ddl-auto 는 create 를 줘서 개발환경에 맞춰서 실행시 스키마를 새로 만들어주도록 명령합니다.
+> spring.jpa.hibernate.ddl-auto=create
+
+create 를 줘서 개발환경에 맞춰서 실행시 스키마를 새로 만들어주도록 명령합니다.
+
+> spring.jpa.show-sql=true
+
+쿼리문을 표시합니다.
+
+> spring.jpa.properties.hibernate.format_sql=true
+
+SQL 문 쿼리가 좀더 보기 쉽게 표시되도록 하는 설정입니다.
+
+![유저-생성](./images/20190913_230126.png)
+
+결과 쿼리문이 표시되는 것을 확인할 수 있습니다.
 
 # Domain 생성
 
@@ -309,6 +329,7 @@ spring.jpa.hibernate.ddl-auto 는 create 를 줘서 개발환경에 맞춰서 �
 
 ~~~
 @Entity
+@Table
 public class Account {
 
     @Id
@@ -334,7 +355,9 @@ public class Account {
 
 `@GeneratedValue` 해당 값이 자동으로 생성되는 값이라고 알려주는 것
 
-`@Column` 해당 테이블의 컬럼에 맵핑을 알려주는 어노테이션
+`@Table, @Column` 해당 테이블의 테이블, 컬럼에 맵핑을 알려주는 어노테이션
+
+@Table 과 @Column 은 생략 가능합니다.
 
 ## JPA 데이터 영속화
 
@@ -394,6 +417,78 @@ public class JpaRunner implements ApplicationRunner {
     }
 }
 ~~~
+
+# JPA 엔티티 맵핑
+
+도메인 모델을 만들었다면 `릴레이션(테이블)에 어떻게 맵핑` 시킬지 그런 정보를 `HibemateJ(하이버네이트)` 한테 줘야합니다. 정보를 주는 방법은 크게 두가지가 있습니다.
+
+- 1. 어노테이션을 사용하는 방법
+- 2. XML을 사용하는 방법
+
+하지만 최근에는 어노테이션을 사용하여 맵핑시켜주는 방법을 많이 사용합니다.
+
+## 어노테이션 정보
+
+- @Entity
+    - "엔티티"는 객체 세상에서 부르는 이름.
+    - 보통 클래스와 같은 이름을 사용하기 때문에 값을 변경하지 않음.
+    - 엔티티의 이름은 JQL 에서 쓰임.
+    - @Entity(name = "newName") 으로 선언할 경우 하이버네이트 객체 내부 안에서만 선언된 이름으로 사용됩니다.
+
+- @Table
+    - "릴레이션(테이블)" 세상에서 부르는 이름
+    - @Table 이름을 선언해주지 않으면 @Entity의 이름으로 기본값을 가집니다.
+    - 테이블의 이름은 SQL 에서 쓰임.
+
+- @Id
+    - 엔티티의 `주키를 맵핑`할 때 사용.
+    - 자바의 모든 Primitive Type(원시 타입)과 그 Reference Type(참조 타입) 을 사용할 수 있음.
+        - Date랑 BigDecimal, Biginteger도 가용 가능.
+    - 복합키를 만드는 맵핑하는 방법도 있습니다.
+    - 보통 Reference Type 을 사용하요 (Long Id) 식으로 만들어 구분을 명확하게 해줍니다. 테이블의 Id가 0인 레코드를 가진 Account 랑 새로만든 Account는 Reference가 Null 이라서 완전히 구분이 됩니다. Primitive 으로 (long Id)로 사용할 경우 Account는 Reference도 0 이기때문에 테이블의 Id 0 값과 겹칩니다.
+
+- @GeneraledValue
+    - `주키의 생성 방법을 맵핑`하는 에노테이션
+    - 생성 전략과 생성기를 설정할 수 있다.
+        - 기본 전략은 AUTO, 사용하는 DB에 따라 적절한 전략 선택
+        - TABLE, SEQUENCE, IDENTITY 중 하나. DB에 따라 달라집니다.
+
+- @Column
+    - nuique
+    - nullable
+    - length
+    - columnDefinition 등등..
+
+- @Temporal
+    - 현재 JPA 2.1까지는 Date와 Calendar만 지원.
+
+- @Transient
+    - 컬럼으로 맵핑하고 싶지 않은 멤버 변수에 사용.
+
+~~~
+@Entity
+public class Account {
+
+    @Id
+    @GeneratedValue
+    private Long id;
+
+    @Column(nullable = false, unique = true)
+    private String username;
+
+    private String password;
+
+    @Temporal(TemporalType.TIMESTAMP)
+    private Date created = new Date();
+
+    @Transient
+    private String no;
+
+    ...getter, setter
+} 
+~~~
+
+![유저-생성](./images/20190913_225425.png)
 
 
 
