@@ -21,9 +21,18 @@
     - [8-1. 어노테이션 정보](#어노테이션-정보)
 - [9. JPA Value 타입 맵핑](#JPA-Value-타입-맵핑)
 - [10. JPA 1대다 맵핑](#JPA-1대다-맵핑)
-    - [10-1. 단방향 @ManyToOne Study 가 주인](#단방향-@ManyToOne-Study-가-주인)
+    - [10-1. 단방향 @ManyToOne Study 가 주인](#단방향-@ManyToOne-Study-가-주인) 
     - [10-2. 단방향 @OneToMany Account 가 주인](#단방향-@OneToMany-Account-가-주인)
     - [10-3. 양방향 관계](#양방향-관계)
+- [11. JPA Cascade](#-JPA-Cascade)
+    - [11-1. Transient 상태](#Transient-상태)
+    - [11-2. Persistent 상태](#Persistent-상태)
+    - [11-3. Detached 상태](#Detached-상태)
+    - [11-4. Removed 상태](#Removed-상태)
+- [12. 완전한 부모자식관계](#완전한-부모자식관계)
+- [13. JPA Fetch](#JPA-Fetch)
+    - [13-1. Eager 지금당자 모든데이터를](#Eager-지금당자-모든데이터를)
+    - [13-2. Lazy 데이터를 나중에](#Lazy-데이터를-나중에 )
 
 
 # 관계형 데이터베이스와 자바
@@ -1187,6 +1196,178 @@ public void run(ApplicationArguments args) throws Exception {
 ~~~
 
 모두 사용할 수 있습니다.
+
+# JPA Fetch
+
+연관 관계의 엔티티를 언제 어떻게 가져올 것인가? 지금, 나중에
+
+- @OneToMany의 기본값은 Lazy
+- @ManyToOne의 기본값은 Eager
+
+> JpaRunner.java
+
+~~~
+@Override
+public void run(ApplicationArguments args) throws Exception {
+    Post post = new Post();
+    post.setTitle("게시글의 제목");
+
+    Comment comment = new Comment();
+    comment.setComment("게시글의 댓글1");
+    post.addComment(comment);
+
+    Comment comment1 = new Comment();
+    comment1.setComment("게시글의 댓글2");
+    post.addComment(comment1);
+
+    Session session = entityManager.unwrap(Session.class);
+    session.save(post);
+
+    // 불러오는것은 별개로 위 주석후..
+
+    Post post1 = session.get(Post.class, 1L);
+    System.out.println("show list: " + post1.getTitle());
+}
+~~~
+
+우선 게시글과 댓글을 작성하였습니다.
+그리고 Id 값이 1인 Post 게시물을 Select 합니다.
+
+~~~
+Hibernate: 
+    select
+        post0_.id as id1_2_0_,
+        post0_.title as title2_2_0_
+~~~
+
+Post title 하나의 데이터만 가져옵니다.
+
+## Eager 지금당자 모든데이터를
+
+> Post.java
+
+~~~
+...
++ @OneToMany(mappedBy = "post", cascade = CascadeType.PERSIST, fetch = FetchType.EAGER)
+private Set<Comment> comments = new HashSet<>();
+...
+~~~
+
+OneToMany 설정에 fetch = FetchType.EAGER (지금당장 모든데이터를) 를 추가하였습니다.
+
+~~~
+Hibernate: 
+    select
+        post0_.id as id1_2_0_,
+        post0_.title as title2_2_0_,
+        comments1_.post_id as post_id3_1_1_,
+        comments1_.id as id1_1_1_,
+        comments1_.id as id1_1_2_,
+        comments1_.comment as comment2_1_2_,
+        comments1_.post_id as post_id3_1_2_ 
+    from
+        post post0_ 
+    left outer join
+        comment comments1_ 
+            on post0_.id=comments1_.post_id 
+    where
+        post0_.id=?
+~~~
+
+left outer join 으로 comment 정보까지 전부 가져온것을 확인합니다.
+
+이번엔 Comment 정보를 가져오겠습니다.
+
+> JpaRunner.java
+
+~~~
+Session session = entityManager.unwrap(Session.class);
+
+Comment comment = session.get(Comment.class, 2L);
+
+System.out.println("=======");
+System.out.println(comment.getComment());
+System.out.println(comment.getPost().getTitle());
+~~~
+
+쿼리가 Post 조회하고 Comment 조회하고 두번 날라가지 않습니다.
+
+이미 Comment를 조회할때 FetchType.EAGER 기능으로 Post 의 내용까지 같이 가져왔기 때문입니다.
+
+~~~
+Hibernate: 
+    select
+        comment0_.id as id1_1_0_,
+        comment0_.comment as comment2_1_0_,
+        comment0_.post_id as post_id3_1_0_,
+        post1_.id as id1_2_1_,
+        post1_.title as title2_2_1_ 
+    from
+        comment comment0_ 
+    left outer join
+        post post1_ 
+            on comment0_.post_id=post1_.id 
+    where
+        comment0_.id=?
+~~~
+
+## Lazy 데이터를 나중에 
+
+Post 엔티티는 OneToMany는 기본적으로 Lazy 입니다. Post 정보만 가져옵니다.
+
+Post 정보만 가져온 상태에서 Comment 를 출력해 보겠습니다.
+
+> JpaRunner.java
+
+~~~
+Post post = session.get(Post.class, 1L);
+System.out.println("=======");
+System.out.println(post.getTitle());
+
+post.getComments().forEach(c -> {
+    System.out.println("=======");
+    System.out.println(c.getComment());
+    System.out.println("=======");
+});
+~~~
+
+n + 1 문제가 발생하지 않고 정상적으로 데이터를 조회합니다.
+Post 를 불러오고 Post 에 관련된 댓글의 정보를 불러왔습니다.
+
+여기서 n + 1 문제는 댓글을 두번 혹은 더많이 조회하는것입니다.
+
+~~~
+Hibernate: 
+    select
+        post0_.id as id1_2_0_,
+        post0_.title as title2_2_0_ 
+    from
+        post post0_ 
+    where
+        post0_.id=?
+=======
+게시글 제목 입니다.
+=======
+
+Hibernate: 
+    select
+        comments0_.post_id as post_id3_1_0_,
+        comments0_.id as id1_1_0_,
+        comments0_.id as id1_1_1_,
+        comments0_.comment as comment2_1_1_,
+        comments0_.post_id as post_id3_1_1_ 
+    from
+        comment comments0_ 
+    where
+        comments0_.post_id=?
+=======
+게시글 댓글 입니다1
+=======
+=======
+게시글 댓글 입니다2
+=======
+~~~
+
 
 # 링크
 
