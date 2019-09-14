@@ -11,7 +11,7 @@
 - [3. DB 연결](#DB-연결)
     - [3-1. SQL 사용](#SQL-사용)
 - [4. ORM Object-Relation Mapping](#ORM-Object-Relation-Mapping)
-- [5. ORM : 패러다임 불일치](#ORM-:-패러다임-불일치)
+- [5. ORM : 패러다임 불일치](#ORM-패러다임-불일치)
 - [6. JPA 프로그래밍 프로젝트 셋팅](#JPA-프로그래밍-프로젝트-셋팅)
     - [6-1. 자동 설정 HibemateJpaAutoConfiguration](#자동-설정-HibemateJpaAutoConfiguration)
 - [7. Domain 생성](#Domain-생성)
@@ -33,6 +33,12 @@
 - [13. JPA Fetch](#JPA-Fetch)
     - [13-1. Eager 지금당자 모든데이터를](#Eager-지금당자-모든데이터를)
     - [13-2. Lazy 데이터를 나중에](#Lazy-데이터를-나중에 )
+- [14. JPA Query](#JPA-Query)
+    - [14-1. JPQL (HQL)](#JPQL-(HQL))
+    - [14-2. Criteria](#Criteria)
+    - [14-3. Native Query](#Native-Query)
+- [15. 스프링 데이터 JPA 소개 및 원리](#스프링-데이터-JPA-소개-및-원리)
+    - [15-1. JpaRepository 동작 원리](#JpaRepository-동작-원리)
 
 
 # 관계형 데이터베이스와 자바
@@ -1368,6 +1374,232 @@ Hibernate:
 =======
 ~~~
 
+# JPA Query
+
+지금까지 살펴본 방법은 HibemateJ(하이버네이트) API 의 Session 을 사용하여 데이터를 불러오고 저장했습니다.
+
+## JPQL (HQL)
+
+- SQL 과는 다른점은 데이터베이스 테이블이 아닌, 엔티티 객체 모델 기반으로 쿼리를 작성.
+- JPA 또는 하이버네이트가 해당 쿼리를 SQL로 변환해서 실행함.
+- https://docs.jboss.org/hibernate/orm/5.2/userguide/html_single/Hibernate_User_Guide.html#hql
+
+간단한 예시
+
+~~~
+TypedQuery<Post> query = entityManager.createQuery("SELECT p FROM Post AS p", Post.class);
+List<Post> posts = query.getResultList();
+
+// Post 엔티티에 To String 을 추가하여 확인합니다.
+posts.forEach(System.out::println);
+~~~
+
+결과입니다.
+
+~~~
+Hibernate: 
+    select
+        post0_.id as id1_2_,
+        post0_.title as title2_2_ 
+    from
+        post post0_
+
+Post{id=1, title='게시글의 제목'}
+~~~
+
+## Criteria
+
+- 타입 세이프 쿼리
+- https://docs.jboss.org/hibernate/orm/5.2/userguide/html_single/Hibernate_User_Guide.html#criteria
+
+~~~
+CriteriaBuilder builder = entityManager.getCriteriaBuilder();
+    CriteriaQuery<Post> criteria = builder.createQuery(Post.class);
+    Root<Post> root = criteria.from(Post.class);
+    criteria.select(root);
+    List<Post> posts = entityManager.createQuery(criteria).getResultList();
+~~~
+
+## Native Query
+
+- SQL 쿼리 실행하기
+- https://docs.jboss.org/hibernate/orm/5.2/userguide/html_single/Hibernate_User_Guide.html#sql
+
+~~~
+List<Post> posts = entityManager
+                .createNativeQuery("SELECT * FROM Post", Post.class)
+                .getResultList();
+~~~
+
+# 스프링 데이터 JPA 소개 및 원리
+
+- JpaRepository<Entity, id> 인터페이스
+    - 매직 인터페이스
+    - @Repository가 없어도 빈으로 등록해 줌.
+
+- @EnableJpaRepositories
+    - 매직의 시작은 여기서 부터
+
+- 매직은 어떻게 이뤄지나?
+    - 시작은 `@Import(JpaRepositoriesRegistrar.class)`
+    - 핵심은 `ImportBeanDefinitionRegistrar` 인터페이스
+
+> PostRepository
+
+~~~
+@Repository
+@Transactional
+public class PostRepository {
+
+    @PersistenceContext
+    EntityManager entityManager;
+
+    public Post add(Post post) {
+        entityManager.persist(post);
+        return post;
+    }
+
+    public Post delete(Post post) {
+        entityManager.remove(post);
+    }
+
+    public List<Post> findAll() {
+        entityManager.createQuery("SELECT p FROM Post AS p", Post.class)
+                .getResultList();
+    }
+}
+~~~
+
+Spring 에 `Bean 으로 등록이 되어야 하므로 @Repository` 가 되야합니다.
+
+JPA 를 사용할 것임으로 `EntityManager 를 @PersistenceContext를 사용하여 Bean 으로 받습니다.` @Autowired 대신에 @PersistenceContext 사용한 이유는 JPA 의 어노테이션을 사용 하므로서 Spring 코드를 최대한 감출수 있기 때문입니다. (Spring 코드를 최대한 감추는 것이 Spring 철학입니다.)
+
+여러가지 CRUD 오퍼레이션들을 만들 수 있지만 테스트 코드도 직접 작성해 줘야하고 여러모로 번거로운 작업이 많습니다. 이를 개선하기 위해서 Repository 를 인터페이스로 만들고 JpaRepository 를 상속받아 사용하는 것입니다. Spring JPA에서 자동으로 Bean 으로 등록이 되기 때문에 따로 Bean 등록은 안해도 됩니다.
+
+~~~
+public interface PostRepository extends JpaRepository<Post, Long> {}
+~~~
+
+PostRepository 라는 인터페이스를 만들었고 JpaRepository 를 상속받도록 했습니다.
+JpaRepository 타입으로 2가지를 주었는데 `첫번째 타입은 Entity 타입`을 `두번재 타입은 Entity에서 사용하는 Id의 타입`
+
+~~~
+@Component
+@Transactional
+public class JpaRunner implements ApplicationRunner {
+
+    @Autowired
+    PostRepository postRepository;
+
+    @Override
+    public void run(ApplicationArguments args) throws Exception {
+        postRepository.findAll().forEach(System.out::println);
+    }
+}
+~~~
+
+간단하게 findAll 메소드 하나로 데이터를 조회합니다.
+개발자가 직접 PostRepository 내부에 코드를 작성한 것이 없기 때문에 테스트 코드를 작성할 필요도 없어서 개발 생산성이 좋고 코드 자체가 적어서 유지보수도 좋습니다.
+
+## JpaRepository 동작 원리
+
+원래는 Application main 클래스에 `@EnableJpaRepositories 어노테이션`이 붙어있어야 합니다. 
+
+> @EnableJpaRepositories 
+
+~~~
+@Target(ElementType.TYPE)
+@Retention(RetentionPolicy.RUNTIME)
+@Documented
+@Inherited
+@Import(JpaRepositoriesRegistrar.class)
+public @interface EnableJpaRepositories {
+    ...
+}
+~~~
+
+여기서 @Import(JpaRepositoriesRegistrar.class) 의 `JpaRepositoriesRegistrar 클래스가 JpaRepository 들을 Bean으로 등록해 주는 역할`을 합니다.
+
+> JpaRepositoriesRegistrar.java
+
+~~~
+/**
+ * {@link ImportBeanDefinitionRegistrar} to enable {@link EnableJpaRepositories} annotation.
+ *
+ * @author Oliver Gierke
+ */
+class JpaRepositoriesRegistrar extends RepositoryBeanDefinitionRegistrarSupport {
+    ...
+}
+~~~
+
+`ImportBeanDefinitionRegistrar 프로그래밍을 통해서 Bean자체를 정의할 수 있게 해줍니다.`
+결론은 JpaRepository 또는 상속받는 인터페이스 모두를 Bean으로 등록 해준다는 뜻입니다.
+이 인터페이스는 스프링 프레임워크의 일부 요소입니다. 
+
+간단하게 예제를 통해서 어떻게 JpaRepository 가 Bean 으로 등록되는지 확인해 보겠습니다.
+
+> Jjunpro.java
+
+~~~
+public class Jjunpro {
+
+    private String name;
+
+    public String getName() {
+        return name;
+    }
+
+    public void SetName(String name) {
+        this.name = name;
+    }
+}
+~~~
+
+Jjunpro 클래스를 `Bean 으로 등록하지 않았습니다.`
+
+> JjunproRegistrar.java
+
+~~~
+public class JjunproRegistrar implements ImportBeanDefinitionRegistrar {
+    
+    @Override
+    public void registerBeanDefinitions(AnnotationMetadata importingClassMetad) {
+
+        GenericBeanDefinition beanDefinition = new GenericBeanDefinition();        
+        beanDefinition.setBeanClass(Jjunpro.class);
+        beanDefinition.getPropertyValues().add("name", "Jjunpro");
+
+        registry.registerBeanDefinition("Jjunpro", beanDefinition);
+    }
+}
+~~~
+
+`ImportBeanDefinitionRegistrar` 을 구현하고 Override 를 불러옵니다.
+
+`GenericBeanDefinition 객체로 Jjunpro 클래스를 어떻게 Bean 으로 등록할지 정의`를 하면 됩니다.
+
+registerBeanDefinition 에는 Bean의 이름과 Bean을 정의한 beanDefinition 담아서
+Registrar 는 최종적으로 `registerBeanDefinition 을 registry 하면 됩니다.`
+
+`JjunproRegistrar 를 Import 하여 사용`합니다.
+
+> Application.java
+
+~~~
+@SpringBootApplication
++ @Import(JjunproRegistrar.class)
+public class DemoApplication {
+
+	public static void main(String[] args) {
+		SpringApplication.run(DemoApplication.class, args);
+	}
+}
+~~~
+
+@Import 프로그래밍(JjunproRegistrar)을 통해서 Jjunpro가 Bean 으로 등록이 됩니다.
+
+이런과정을 통해서 JPA JpaRepository 가 Bean으로 등록이 되는 것입니다.
 
 # 링크
 
