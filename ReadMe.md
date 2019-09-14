@@ -19,6 +19,11 @@
     - [7-2. hibernate 영속화](#hibernate-영속화)
 - [8. JPA 엔티티 맵핑](#JPA-엔티티-맵핑)
     - [8-1. 어노테이션 정보](#어노테이션-정보)
+- [9. JPA Value 타입 맵핑](#JPA-Value-타입-맵핑)
+- [10. JPA 1대다 맵핑](#JPA-1대다-맵핑)
+    - [10-1. 단방향 @ManyToOne Study 가 주인](#단방향-@ManyToOne-Study-가-주인)
+    - [10-2. 단방향 @OneToMany Account 가 주인](#단방향-@OneToMany-Account-가-주인)
+    - [10-3. 양방향 관계](#양방향-관계)
 
 
 # 관계형 데이터베이스와 자바
@@ -283,7 +288,7 @@ ORM은 어플리케이션의 클래스와 SQL 데이터베이스의 테이블 �
 
 https://start.spring.io/ 링크에서 spring boot jpa 의존성을 추가하여 프로젝트를 생성 후 import 합니다.
 
-![유저-생성](./images/20190912_235447.png)
+![jpa 확인](./images/20190912_235447.png)
 
 gradle에 설치된 의존성을 확인하면 jpa, hibernate 가 있는것을 확인할 수 있습니다.
 
@@ -319,7 +324,7 @@ create 를 줘서 개발환경에 맞춰서 실행시 스키마를 새로 만들
 
 SQL 문 쿼리가 좀더 보기 쉽게 표시되도록 하는 설정입니다.
 
-![유저-생성](./images/20190913_230126.png)
+![쿼리확인](./images/20190913_230126.png)
 
 결과 쿼리문이 표시되는 것을 확인할 수 있습니다.
 
@@ -490,7 +495,456 @@ public class Account {
 
 ![유저-생성](./images/20190913_225425.png)
 
+# JPA Value 타입 맵핑
 
+~~~
+public class Account {
+    private String username;
+}
+~~~
+
+엔티티 타입은 class Account 를 가리키고 `Value 타입은 String username` 을 가리킵니다.
+
+간단한 예를 들어 Address 클래스가 존재합니다.
+
+~~~
+public class Address { ... }
+~~~
+
+Address 가 Account 엔티티에 Value 타입으로 들어가있으면 Address 클래스는 엔티티가 아닙니다. 그 이유는 Account 가 만들어 질때 같이 만들어 져야 하고 생명주기가 Account에 있습니다. 이러한 다른 엔티티에 종속적인 타입을 Value 타입이라고 보면 됩니다.
+
+Value 타입선언은 해당 클래스에 @Embeddable 을 선언해 주면 됩니다.
+
+Composite 한 타입을 사용하는 방법은 @Embeddable 어노테이션을 붙여서 사용하면 됩니다.
+
+~~~
+@Embeddable
+public class Address {
+
+    @Column
+    private String street;
+
+    @Column
+    private String city;
+
+    @Column
+    private String state;
+
+    @Column
+    private String zipCode;
+}
+~~~
+
+~~~
+@Entity
+class Account {
+
+    @Id
+    @GeneratedValue
+    private Long id;
+
+    @Column(nullable = false, unique = true)
+    private String username;
+
+    private String password;
+
+    @Temporal(TemporalType.TIMESTAMP)
+    private Date created = new Date();
+
+    @Transient
+    private String no;
+
+    @Embedded
+    private Address address;
+
+    ...getter, setter
+}
+~~~
+
+![Address](./images/20190913_234311.png)
+
+Address 프로퍼티 들을 각각 오버라이딩 하는 방법도 있습니다.
+
+~~~
+...
+@Embedded
+@AttributeOverrides({
+    @AttributeOverride(name = "street", column = @Column(name = "home_street"))
+})
+private Address address;
+~~~
+
+![AttributeOverrides](./images/20190913_235230.png)
+
+# JPA 1대다 맵핑
+
+- 관계에는 항상 `두 엔티티`가 존재 합니다.
+    - `둥 중 하나`는 그 관계의 `주인(owning)`이고
+    - `다른 쪽은 종속된(non-owning)`쪽 입니다.
+    - 해당 관계의 `반대쪽 레퍼런스를 가지고 있는 쪽이 주인`.
+
+- `단방향`에서의 `관계의 주인은 명확`합니다.
+    - `관계를 정의`한 쪽이 그 관계의 `주인`입니다.
+
+- 단방향 @ManyToOne
+    - 기본값 FK(Foreign Key) 생성
+
+- 단방향 @OneToMany
+    - 기본값은 조인 테이블 생성
+
+- 양방향
+    - FK 가지고 있는 쪽이 오너 따라서 기본값은 @ManyToOne 가지고 있는 쪽이 주인.
+    - 주인 아닌쪽(@OneToMany쪽)에서 mappedBy 사용해서 관계를 맺고 있는 필드를 설정해야 합니다.
+
+- 양방향
+    - @ManyToOne (이쪽이 주인)
+    - @OneToMany(mappedBy)
+    - 주인한테 관계를 설정해야 DB에 반영이 됩니다.
+
+## 단방향 @ManyToOne Study 가 주인
+
+> Study.java
+
+~~~
+@Entity
+public class Study {
+
+    @Id
+    @GeneratedValue
+    private Long id;
+
+    private String name;
+
+    @ManyToOne
+    private Account owner;
+
+    ...getter, setter
+}
+~~~
+
+Study 클래스의 주인은 누구인가 만든이는 누구인가 의 관계를 만들다고 할때 Account owner 관계를 만들 수 있습니다.
+
+이 관계는 어떠한 Study를 만드는 클래스는 `여러개의 Study`를 만들 수 있습니다. 그러면 `Study 입장에서는 ManyToOne 입장`이 되는 것입니다.
+
+> JpaRunner.java
+
+~~~
+@Component
+@Transactional
+public class JpaRunner implements ApplicationRunner {
+
+    @PersistenceContext
+    private EntityManager entityManager;
+
+    @Override
+    public void run(ApplicationArguments args) throws Exception {
+        Account account = new Account();
+        account.setUsername("new user");
+        account.setPassword("hibernate");
+
+        + Study study = new Study();
+        + study.setName("Srping data jpa");
+        + study.setOwner(account);
+
+        Session session = entityManager.unwrap(Session.class);
+        session.save(account);
+        + session.save(study);
+    }
+}
+~~~
+
+study Owner 를 account 를 set 해줍니다.
+
+이러한 과정의 결과는 Study 라는 테이블 안에 `Account 테이블의 PK(Primary Key) 를 참조`하는 `foreign key 컬럼을 생성`해서 `Study 테이블 안에` 가지고 있게 됩니다.
+
+![JPA 1대다 맵핑](./images/20190914_002317.png)
+
+Study 테이블 안에 owner_id 라는 컬럼이 생성됩니다.
+
+owner_id에 대한 constraint(강제,속박)가 foreign key로 잡힙니다.
+
+이 관계에서의 `주인은 Study 엔티티` 입니다. 그 이유는 반대쪽의 엔티티 정보를 Study에서 참조하고 있어서 입니다.
+
+## 단방향 @OneToMany Account 가 주인
+
+> Study.java
+
+~~~
+@Entity
+public class Study {
+
+    @Id
+    @GeneratedValue
+    private Long id;
+
+    private String name;
+
+    ...getter, setter
+}
+~~~
+
+Study 엔티티에서 더이상 Account owner 를 관리하지 않습니다. 
+대신에 Account owner 쪽에서 관리합니다.
+
+> Account.java
+
+~~~
+@Entity
+class Account {
+
+    @Id
+    @GeneratedValue
+    private Long id;
+
+    @Column(nullable = false, unique = true)
+    private String username;
+
+    private String password;
+
+    @Temporal(TemporalType.TIMESTAMP)
+    private Date created = new Date();
+
+    @Transient
+    private String no;
+
+    @Embedded
+    private Address address;
+
+    @OneToMany
+    private Set<Study> studies = new HashSet<>();
+
+    ...getter, setter
+}
+~~~
+
+Account 엔티티는 자기가 만든 Study 목록을 가지고 있다고 가정한다면
+한 클래스가 하나의 Study만 만든다 는 맞지 않기 때문에 한 클래스가 여러개의 Study를 만들다는 것이 옳바릅니다. 그래서 OneToMany 입니다. (하나가 여러개를 대함)
+
+> JpaRunner.java
+
+관계 설정은 어디서 할 수 있냐면 `주인인 쪽에서 관계 설정`을 할 수 있습니다. 이제는 Account 가 Study 관계를 가지고 있으므로 주인 입니다.
+
+~~~
+@Component
+@Transactional
+public class JpaRunner implements ApplicationRunner {
+
+    @PersistenceContext
+    private EntityManager entityManager;
+
+    @Override
+    public void run(ApplicationArguments args) throws Exception {
+        Account account = new Account();
+        account.setUsername("new user");
+        account.setPassword("hibernate");
+
+        Study study = new Study();
+        study.setName("Srping data jpa");
+
+        + account.getStudies().add(study);
+
+        Session session = entityManager.unwrap(Session.class);
+        session.save(account);
+        session.save(study);
+    }
+}
+~~~
+
+결과 확인
+
+~~~
+Hibernate: 
+    drop table if exists study cascade
+
+Hibernate: 
+    drop sequence if exists hibernate_sequence
+
+Hibernate: create sequence hibernate_sequence start 1 increment 1
+
+Hibernate:     
+    create table account (
+       id int8 not null,
+        city varchar(255),
+        state varchar(255),
+        home_street varchar(255),
+        zip_code varchar(255),
+        created timestamp,
+        password varchar(255),
+        username varchar(255) not null,
+        primary key (id)
+    )
+
+Hibernate: 
+    create table account_studies (
+       account_id int8 not null,
+        studies_id int8 not null,
+        primary key (account_id, studies_id)
+    )
+
+Hibernate: 
+    create table study (
+       id int8 not null,
+        name varchar(255),
+        primary key (id)
+    )
+
+Hibernate: 
+    alter table if exists account 
+       add constraint UK_gex1lmaqpg0ir5g1f5eftyaa1 unique (username)
+
+Hibernate: 
+    alter table if exists account_studies 
+       add constraint UK_tevcop76y9etp9vx5vce7gns6 unique (studies_id)
+
+Hibernate: 
+    alter table if exists account_studies 
+       add constraint FKem9ae62rreqwn7sv2efcphluk 
+       foreign key (studies_id) 
+       references study
+
+Hibernate: 
+    alter table if exists account_studies 
+       add constraint FK4h3r1x3qcsugrps8vc6dgnn25 
+       foreign key (account_id) 
+       references account
+~~~
+
+(account, account_studies, study) 테이블이 3개가 생성되었습니다.
+
+account_studies 테이블이 account id와 study id를 둘다 가지고 있습니다.
+
+만약 데이터를 저장하게 된다면
+
+~~~
+Hibernate: 
+    insert 
+    into
+        account
+        (city, state, home_street, zip_code, created, password, username, id) 
+    values
+        (?, ?, ?, ?, ?, ?, ?, ?)
+
+Hibernate: 
+    insert 
+    into
+        study
+        (name, id) 
+    values
+        (?, ?)
+
+Hibernate: 
+    insert 
+    into
+        account_studies
+        (account_id, studies_id) 
+    values
+        (?, ?)
+~~~
+
+![관계형결과](./images/20190914_014905.png)
+
+account 데이블에도 study 테이블에도 관계에 대한 정보가 없습니다.
+
+둘의 관계의 대한 정보는 account_studies 정의 되어 있는 것을 확인할 수 있습니다.
+
+## 양방향 관계
+
+Study 는 Account 를 Account는 Study 를 참조하려면 양방향 관계로 만들어야 합니다.
+
+> Study.java
+
+~~~
+@Entity
+public class Study {
+
+    @Id
+    @GeneratedValue
+    private Long id;
+
+    private String name;
+
+    @ManyToOne
+    private Account owner;
+}
+~~~
+
+> Account.java
+
+~~~
+@Entity
+public class Account {
+
+    @Id
+    @GeneratedValue
+    private Long id;
+
+    @Column(nullable = false, unique = true)
+    private String username;
+
+    private String password;
+
+    @OneToMany(mappedBy = "owner")
+    private Set<Study> studies = new HashSet<>();
+}
+~~~
+
+양방향 관계를 만들어 주려면 OneToMany 쪽에 mappedBy 로 이 관계가 반대쪽에 어떻게 맵핑이 되어있는지 관계를 정의한 필드를 작성하면 됩니다.
+
+Study 클래스에서 Account 를 owner 라고 정의를 하였습니다. 이를 Account 클래스에서 owner라는것을 알려주어야 합니다. 그러면 Account 에서 Study의 필요한 관계를 또 생성하지 않고 Study에 정의되어 있는 Account owner 에 종속됩니다. 그러면 Study 가 주인이 됩니다.
+
+그렇다면 지금은 주인은 Study 클래스 입니다.
+하지만 Run 코드를 Account 에 Study를 주입하는 방식으로 실행한다면 어떻게 될까요? 그러면 account 에는 아무런 문제가 없지만 Study 테이블의 데이터 owner_id 값에는 아무런 값이 들어가지 않게 됩니다.
+
+~~~
+@Override
+public void run(ApplicationArguments args) throws Exception {
+    Account account = new Account();
+    account.setUsername("new user");
+    account.setPassword("hibernate");
+
+    Study study = new Study();
+    study.setName("Srping data jpa");
+
+    account.getStudies().add(study);
+
+    Session session = entityManager.unwrap(Session.class);
+    session.save(account);
+    session.save(study);
+}
+~~~
+
+account.getStudies().add(study);
+
+account 에 study 가 들어가는 입장
+
+![관계형결과](./images/20190914_141130.png)
+
+객체적으로 봤을때 둘다 양방향으로 가리키도록 해야합니다.
+
+~~~
+account.getStudies().add(study);
+study.setOwner(account);
+~~~
+
+account 도 study를 study도 account 를 연관있도록 합니다.
+
+이를 쉽게 메소드를 생성하여 사용하도록 합니다.
+
+> Account.java
+
+~~~
+// add
+public void addStudy(Study study) {
+    this.getStudies().add(study);
+    study.setOwner(this);
+}
+
+// remove
+public void removeStudy(Study study) {
+    this.getStudies().remove(study);
+    study.setOwner(null);
+}
+~~~
 
 # 링크
 

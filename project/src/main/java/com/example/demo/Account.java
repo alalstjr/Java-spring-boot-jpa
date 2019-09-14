@@ -2,6 +2,8 @@ package com.example.demo;
 
 import javax.persistence.*;
 import java.util.Date;
+import java.util.HashSet;
+import java.util.Set;
 
 @Entity
 public class Account {
@@ -15,11 +17,16 @@ public class Account {
 
     private String password;
 
-    @Temporal(TemporalType.TIMESTAMP)
-    private Date created = new Date();
+    @OneToMany(mappedBy = "owner")
+    private Set<Study> studies = new HashSet<>();
 
-    @Transient
-    private String no;
+    public Set<Study> getStudies() {
+        return studies;
+    }
+
+    public void setStudies(Set<Study> studies) {
+        this.studies = studies;
+    }
 
     public Long getId() {
         return id;
@@ -43,5 +50,10 @@ public class Account {
 
     public void setPassword(String password) {
         this.password = password;
+    }
+
+    public void addStudy(Study study) {
+        this.getStudies().add(study);
+        study.setOwner(this);
     }
 }
