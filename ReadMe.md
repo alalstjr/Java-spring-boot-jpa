@@ -946,6 +946,248 @@ public void removeStudy(Study study) {
 }
 ~~~
 
+# JPA Cascade
+
+엔티티의 상태 변화를 전파 시키는 옵션.
+
+- 엔티티의 상태
+    - Transient: JPA가 모르는 상태
+    - Persistent: JPA가 관리중인 상태 (1차 캐시, Dirty Checking,    Write - Behind, ...)
+    - Detached: JPA가 더이상 관리하지 않는 상태.
+    - Removed: JPA가 관리하긴 하지만 삭제하기로 한 상태.
+
+## Transient 상태
+
+~~~
+Account account = new Account();
+account.setUsername("new user");
+account.setPassword("hibernate");
+
+Study study = new Study();
+study.setName("Srping data jpa");
+...
+~~~
+
+이상태의 객체들이 `Transient 상태` 입니다. 
+`HibemateJ(하이버네이트), JPA 가 이 객체들을 전혀 모릅니다.`
+DB에 맵핑되어있는 레코드가 전혀 없습니다. 
+이 객체들은 이 자체로 DB에 들어갈지도 모르는 상태
+
+## Persistent 상태
+
+~~~
+...
+account.addStudy(study);
+
+Session session = entityManager.unwrap(Session.class);
+session.save(account);
+session.save(study);
+~~~
+session 을 통해서 저장을 하게되면 
+`HibemateJ(하이버네이트), JPA 가 이 객체들을 관리하는 상태`가 됩니다.
+
+`save를 했다고 해서 바로 DB에 들어가는 것은 아닙니다.`
+HibemateJ(하이버네이트)가 Persistent 상태 로 관리하고 있다가 어느 시점이 되면 DB에 싱크업을 시켜주는 시점에 DB에 싱크업 합니다.
+
+Persistent 상태에서는 HibemateJ(하이버네이트)가 여러가지 일을 해줍니다. 
+
+- 1차 캐시 save 단계 입니다.
+    - `EntityManager, session 을 보통 Persistent context` 라고 부릅니다. 해당 인스턴스를 넣어 둔것입니다. 즉 캐시가 된 상태입니다.
+
+캐시가 등록된 상태에서 인스턴스를 달라고 하면
+
+~~~
+Account jjunpro = session.load(Account.class, account.getId());
+~~~
+
+SELECT 쿼리가 작동하지 않습니다.
+이미 session save 내부에 캐시로 저장되어 있기때문에 DB에 접근하지 않고 캐시에 담겨진 값을 가져와 보여주기 때문에 해당 쿼리는 작동하지 않는 것입니다.
+
+좀더 보자면 
+
+~~~
+public void run(ApplicationArguments args) throws Exception {
+    Account account = new Account();
+    account.setUsername("new user");
+    account.setPassword("hibernate");
+
+    Study study = new Study();
+    study.setName("Srping data jpa");
+
+    account.addStudy(study);
+
+    Session session = entityManager.unwrap(Session.class);
+    session.save(account);
+    session.save(study);
+
+    Account jjunpro = session.load(Account.class, account.getId());
+
+    jjunpro.setUsername("go user");
+    jjunpro.setUsername("very five");
+    jjunpro.setUsername("new user");
+}
+~~~
+
+결과는 업데이트 쿼리는 일어나지 않습니다.
+그 이유는 이전에 account 이름이 "new user" 이기 때문에 캐시에서 체크하여 변경할 필요가 없다고 판단하고 실행하지 않은것 입니다.
+이런면에서 성능적인 장점이 보입니다.
+
+## Detached 상태
+
+트랜잭션이 끝나고 Session 밖으로 나왔을 때 JPA가 더이상 관리하지 않는 상태 이미 Session이 끝난 상태이기 때문에 1차 캐시, 더티채킹 등등 전혀 발생하지 않습니다. 
+
+- Session.evict()
+- Session.clear()
+- Session.close()
+
+Detached 상태로 사용하다가 다시 위 기능을 사용하고 싶다면 Persistent 상태로 전환해야 합니다. 그때 사용하는 메소드 목록
+
+- Session.update()
+- Session.merge()
+- Session.saveOrUpdate()
+
+## Removed 상태
+
+JPA가 관리하긴 하지만 삭제하기로 한 상태 실제 커밋이 일어날때 삭제가 일어납니다.
+
+- Session.delete()
+
+# 완전한 부모자식관계
+
+어떠한 게시글이 존재하고 해당 게시글에 댓글들이 존재하는 상태입니다. 해당 게시글이 저장되면 댓글도 같이 저장되고 삭제되면 댓글도 같이 삭제되는 과정 입니다.
+
+> Post.java
+
+~~~
+@Entity
+public class Post {
+
+    @Id
+    @GeneratedValue
+    private Long id;
+
+    private String title;
+
+    @OneToMany(mappedBy = "post")
+    private Set<Comment> comments = new HashSet<>();
+
+    public void addComment(Comment comment) {
+        this.getComments().add(comment);
+        comment.setPost(this);
+    }
+
+    ...getter, setter
+}
+~~~
+
+> Comment.java
+
+~~~
+@Entity
+public class Comment {
+
+    @Id
+    @GeneratedValue
+    private Long id;
+
+    private String comment;
+
+    @ManyToOne
+    private Post post;
+
+    ...getter, setter
+}
+~~~
+
+둘은 양방향 관계임을 OneToMany 통해서 선언하였습니다.
+
+~~~
+@Override
+public void run(ApplicationArguments args) throws Exception {
+    Post post = new Post();
+    post.setTitle("게시글의 제목");
+
+    Comment comment = new Comment();
+    comment.setComment("게시글의 댓글1");
+    post.addComment(comment);
+
+    Comment comment1 = new Comment();
+    comment1.setComment("게시글의 댓글2");
+    post.addComment(comment1);
+
+    Session session = entityManager.unwrap(Session.class);
+    session.save(post);
+}
+~~~
+
+지금 상태에서 DB를 확인해 보면 comment 를 제외한 post 게시글만 저장이 됬습니다. 하지만 Cascade 옵션을 사용해서 post 저장시 comment 까지 저장되도록 하겠습니다.
+
+> Post.java
+
+~~~
+@Entity
+public class Post {
+
+    @Id
+    @GeneratedValue
+    private Long id;
+
+    private String title;
+
+    + @OneToMany(mappedBy = "post", cascade = CascadeType.PERSIST)
+    private Set<Comment> comments = new HashSet<>();
+
+    public void addComment(Comment comment) {
+        this.getComments().add(comment);
+        comment.setPost(this);
+    }
+
+    ...getter, setter
+}
+~~~
+
+![게시글 댓글 결과](./images/20190914_182412.png)
+
+post 와 comment 둘다 Persistent 상태가 되서 post 저장시 같이 저장이 됩니다.
+
+cascade 설정에는 여러가지 설정이 들어갈 수 있습니다.
+만약 Post 삭제시 포함된 Comment 까지 삭제되려면?
+
+> Post.java
+
+~~~
+...
+@OneToMany(mappedBy = "post", cascade = {CascadeType.PERSIST, CascadeType.REMOVE})
+~~~
+
+삭제를 추가합니다.
+
+> JpaRunner.java
+
+~~~
+@Override
+public void run(ApplicationArguments args) throws Exception {
+
+    Session session = entityManager.unwrap(Session.class);
+    Post post = session.get(Post.class, 1L);
+    session.delete(post);
+}
+~~~
+
+정상 Post 와 포함된 Comment 들까지 삭제 됩니다.
+
+보통 Cascade 전부 불러와 사용합니다.
+
+
+> Post.java
+
+~~~
+...
+@OneToMany(mappedBy = "post", cascade = CascadeType.ALL)
+~~~
+
+모두 사용할 수 있습니다.
+
 # 링크
 
 https://subicura.com/2017/01/19/docker-guide-for-beginners-1.html - [doker란?]
