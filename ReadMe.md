@@ -45,6 +45,7 @@
     [17-2. CrudRepository](#CrudRepository)
     [17-3. Repository Test](#Repository-Test)
     [17-4. Repository 커스텀](#Repository-커스텀)
+- [18. 스프링 데이터 Common Repository 인터페이스 정의하기](#스프링-데이터-Common-Repository-인터페이스-정의하기)
 
 
 # 관계형 데이터베이스와 자바
@@ -1753,6 +1754,70 @@ public interface PostRepository extends JpaRepository<Post, Long> {
 키워드와 페이징 파라미터를 넘겨줍니다. 그러면
 
 findByTitleContains 이름을 분석해서 쿼리를 만들어 줍니다.
+
+# 스프링 데이터 Common Repository 인터페이스 정의하기
+
+JpaRepository 상속받으면서 들어오는 많은 기능을 직접 정의하여 사용하고 싶다면 
+
+> CommentRepository.java
+
+~~~
+@RepositoryDefinition(domainClass = Comment.class, idClass = Long.class)
+public interface CommentRepository {
+
+    Comment save(Comment comment);
+
+    List<Comment> findAll();
+}
+~~~
+
+`@RepositoryDefinition 어노테이션을 사용`하여 도메인 클레스와 Entity에서 사용하는 Id의 타입을 넣어 불러옵니다.
+
+기본적인 CRUD 기능의 save 과 findAll `딱 두 기능만 가지고 있는` Repository 이전 모든 메소드를 불러오는 Repository와는 가벼운 인터페이스가 됐습니다.
+
+> CommentRepositoryTest.java
+
+~~~
+@RunWith(SpringRunner.class)
+@DataJpaTest
+public class CommentRepositoryTest {
+
+    @Autowired
+    CommentRepository commentRepository;
+
+    @Test
+    public void crud() {
+        Comment comment = new Comment();
+        comment.setComment("hello comment");
+        commentRepository.save(comment);
+
+        List<Comment> all = commentRepository.findAll();
+        assertThat(all.size()).isEqualTo(1);
+    }
+}
+~~~
+
+만약에 직접 정의하는 Repository 들의 save, findAll 메소드가 공통적으로 들어간다면
+공용 Repository 를 따로 정의하여 사용하면 됩니다.
+
+> MyRepository.java
+
+~~~
+@NoRepositoryBean
+public interface MyRepository<T, Id extends Serializable> extends Repository<T, Id> {
+
+    <E extends T> E save(E entity);
+
+    List<T> findAll();
+}
+~~~
+
+`Repository 빈등록을 제외하는 어노테이션 @NoRepositoryBean 추가`합니다.
+Repository 틀을 제공하는 인터페이스를 상속하고 엔티티와 Id를 받도록 합니다.
+
+MyRepository 의 Id 는 Serializable 타입으로 받아야 합니다.
+
+# 스프링 데이터 Common Null 처리하기
 
 # 링크
 
