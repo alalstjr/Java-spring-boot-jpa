@@ -39,6 +39,12 @@
     - [14-3. Native Query](#Native-Query)
 - [15. 스프링 데이터 JPA 소개 및 원리](#스프링-데이터-JPA-소개-및-원리)
     - [15-1. JpaRepository 동작 원리](#JpaRepository-동작-원리)
+- [16. 2부 스프링 데이터 JPA 활용](#2부-스프링-데이터-JPA-활용)
+- [17. 스프링 데이터 Common Repository](#스프링-데이터-Common-Repository)
+    [17-1. PagingAndSortingRepository](#PagingAndSortingRepository)
+    [17-2. CrudRepository](#CrudRepository)
+    [17-3. Repository Test](#Repository-Test)
+    [17-4. Repository 커스텀](#Repository-커스텀)
 
 
 # 관계형 데이터베이스와 자바
@@ -46,6 +52,15 @@
 관계형 데이터베이스는 자바와 독립적입니다. 
 JDBC 를 사용하여 데이터베이스에 접속을 해서 데이터를 저장하거나 가져옵니다.
 그런일을 하는 이유는 우리 에플리케이션의 데이터를 영속화(Perpetuation) 해야하는 이유가 있기 때문입니다.
+
+- JDBC
+    - (관계형) 데이터베이스와 자바의 연결 고리
+
+- JDBC
+    - DataSource / DriverManager
+    - Connection
+    - PreparedStatement
+
 
 # DB관리 Dokcer 생성
 
@@ -323,6 +338,8 @@ spring.jpa.properties.hibernate.jdbc.lob.non_contextual_creation=true
 
 spring.jpa.show-sql=true
 spring.jpa.properties.hibernate.format_sql=true
+
+logging.level.org.hibernate.type.descriptor.sql=trace
 ~~~
 
 application.properties 에 우리가 사용하는 DB에 접근할수 있는 정보를 줘야합니다.
@@ -342,6 +359,23 @@ SQL 문 쿼리가 좀더 보기 쉽게 표시되도록 하는 설정입니다.
 ![쿼리확인](./images/20190913_230126.png)
 
 결과 쿼리문이 표시되는 것을 확인할 수 있습니다.
+
+> logging.level.org.hibernate.type.descriptor.sql=trace
+
+쿼리에 들어간 값을 확인할 수 있습니다.
+
+~~~
+Hibernate: 
+    insert 
+    into
+        post
+        (title, id) 
+    values
+        (?, ?)
+
+2019-09-15 14:03:32.507 TRACE 16940 --- [           main] o.h.type.descriptor.sql.BasicBinder      : binding parameter [1] as [VARCHAR] - [게시글 생성]
+2019-09-15 14:03:32.510 TRACE 16940 --- [           main] o.h.type.descriptor.sql.BasicBinder      : binding parameter [2] as [BIGINT] - [4]
+~~~
 
 # Domain 생성
 
@@ -1600,6 +1634,125 @@ public class DemoApplication {
 @Import 프로그래밍(JjunproRegistrar)을 통해서 Jjunpro가 Bean 으로 등록이 됩니다.
 
 이런과정을 통해서 JPA JpaRepository 가 Bean으로 등록이 되는 것입니다.
+
+# 2부 스프링 데이터 JPA 활용
+
+스프링 데이터는 하나의 프로젝트가 아닌 `여러개의 프로젝트들의 묶음`을 지칭하는 용어입니다.
+
+![스프링 데이터](./images/20190915_141319.png)
+
+http://projects.spring.io/spring-data/
+
+# 스프링 데이터 Common Repository
+
+![Common Repository](./images/20190915_142054.png)
+
+> PostRepository.java
+
+~~~
+public interface PostRepository extends JpaRepository<Post, Long> {}
+~~~
+
+JpaRepository 를 상속받은 PostRepository 인터페이스가 있습니다.
+JpaRepository 는 스프링 데이터 JPA에서 제공해주는 인터페이스로 
+
+> JpaRepository.java
+
+~~~
+@NoRepositoryBean
+public interface JpaRepository<T, ID> extends PagingAndSortingRepository<T, ID>, QueryByExampleExecutor<T> {
+    ...
+}
+~~~
+
+## PagingAndSortingRepository
+
+PagingAndSortingRepository 를 상속 받고 있는 인터페이스 입니다.
+여기서 `PagingAndSortingRepository 부터가 데이터 Common 속하는 인터페이스` 입니다.
+
+> PagingAndSortingRepository.java
+
+~~~
+@NoRepositoryBean
+public interface PagingAndSortingRepository<T, ID> extends CrudRepository<T, ID> {
+    ...
+}
+~~~
+
+`PagingAndSortingRepository 인터페이스는 페이징과 정렬 기능을 지원`하는 메소드가 있습니다.
+기본적인 CrudRepository 인터페이스를 상속 받고 있습니다.
+
+## CrudRepository
+
+> CrudRepository.java
+
+~~~
+@NoRepositoryBean
+public interface CrudRepository<T, ID> extends Repository<T, ID> {
+    ...
+}
+~~~
+
+CrudRepository 는 `Repository 를 상속받는데 역할은 마커 인터페이스` 입니다.
+실질적으로 어떠한 역할을 하는것은 아닙니다.
+
+각각의 중간 단계의 Repository 에는 @NoRepositoryBean 어노테이션이 붙어있습니다.
+`@NoRepositoryBean 의 역할은 실제 Bean 을 만들어 등록하지 않도록 방지`해주는 어노테이션 입니다. 실제 Repository 가 아님을 표시한 것입니다.
+
+## Repository Test
+
+~~~
+@RunWith(SpringRunner.class)
+@DataJpaTest
+public class PostRepositoryTest {
+
+    @Autowired
+    PostRepository postRepository;
+
+    @Test
+    public void crudRepository() {
+
+        // Given
+        Post post = new Post();
+        post.setTitle("Hello Spring Boot Common");
+        assertThat(post.getId()).isNull();
+
+        // When 저장
+        Post newPost = postRepository.save(post);
+
+        // Then 존재여부
+        assertThat(newPost.getId()).isNotNull();
+
+        // When 모든 검색
+        List<Post> posts = postRepository.findAll();
+
+        // Then
+        assertThat(posts.size()).isEqualTo(1);
+        assertThat(posts).contains(newPost);
+
+        // When Page 기능
+        Page<Post> all = postRepository.findAll(PageRequest.of(0, 10));
+    }
+}
+~~~
+
+@DataJpaTest 어노테이션으로 인해서 Repository 관련 Bean 만 등록이 됩니다. (다른 Bean 을 검색하지 않음으로 속도상 빠름)
+
+## Repository 커스텀
+
+> PostRepository.java
+
+~~~
+public interface PostRepository extends JpaRepository<Post, Long> {
+
+    Page<Post> findByTitleContains(String title, Pageable pageable);
+}
+~~~
+
+어떠한 특정한 키워드를 가지고있는 title의 post 목록을 페이징을 해서 찾겠다 
+키워드와 페이징 파라미터를 넘겨줍니다. 그러면
+
+findByTitleContains 이름을 분석해서 쿼리를 만들어 줍니다.
 
 # 링크
 
