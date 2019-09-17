@@ -46,6 +46,8 @@
     [17-3. Repository Test](#Repository-Test)
     [17-4. Repository 커스텀](#Repository-커스텀)
 - [18. 스프링 데이터 Common Repository 인터페이스 정의하기](#스프링-데이터-Common-Repository-인터페이스-정의하기)
+- [19. 스프링 데이터 Common Null 처리하기](#스프링-데이터-Common-Null-처리하기)
+    - [19-1. Null 어노테이션](#Null-어노테이션)
 
 
 # 관계형 데이터베이스와 자바
@@ -106,6 +108,10 @@ psql springjpa
 - docker 접속 확인
 
 > docker ps
+
+- docker 내려간 접속 확인
+
+> docker ps -a
 
 - docker 컨테이너 실행
 
@@ -503,7 +509,7 @@ public class JpaRunner implements ApplicationRunner {
     - 보통 Reference Type 을 사용하요 (Long Id) 식으로 만들어 구분을 명확하게 해줍니다. 테이블의 Id가 0인 레코드를 가진 Account 랑 새로만든 Account는 Reference가 Null 이라서 완전히 구분이 됩니다. Primitive 으로 (long Id)로 사용할 경우 Account는 Reference도 0 이기때문에 테이블의 Id 0 값과 겹칩니다.
 
 - @GeneraledValue
-    - `주키의 생성 방법을 맵핑`하는 에노테이션
+    - `주키의 생성 방법을 맵핑`하는 어노테이션
     - 생성 전략과 생성기를 설정할 수 있다.
         - 기본 전략은 AUTO, 사용하는 DB에 따라 적절한 전략 선택
         - TABLE, SEQUENCE, IDENTITY 중 하나. DB에 따라 달라집니다.
@@ -1817,7 +1823,144 @@ Repository 틀을 제공하는 인터페이스를 상속하고 엔티티와 Id�
 
 MyRepository 의 Id 는 Serializable 타입으로 받아야 합니다.
 
+> CommentRepository.java
+
+~~~
+@RepositoryDefinition(domainClass = Comment.class, idClass = Long.class)
+public interface CommentRepository extends MyRepository {}
+~~~
+
+MyRepository 상속 받음으로 나만의 Repository를 만들어 사용하였습니다.
+
 # 스프링 데이터 Common Null 처리하기
+
+~~~
+@NoRepositoryBean
+public interface MyRepository<T, Id extends Serializable> extends Repository<T, Id> {
+
+    <E extends T> E save(E entity);
+
+    List<T> findAll();
+
+    <E extends T> Optional<E> findById(Id id);
+}
+~~~
+
+리턴값이 `한개(단일값)의 경우 Optional` 을 사용해서 해당 엔티티의 `리턴값이 Null` 을 체크하여 적당한 방향으로 안내해줍니다.
+
+> CommentRepositoryTest.java
+
+~~~
+...
+Optional<Comment> comment = commentRepository.findById(100);
+assertThat(comment).isEmpty();
+Comment comment = comment.orElse(new Comment());
+...
+~~~
+
+결과값의 `Null 값을 체크하여 Optional API 가 제공`하는 메소드로 예외를 만들어 줍니다.
+
+~~~
+Optional<Comment> comment = commentRepository.findById(100);
+if(comment == null) {
+    throw new exception();
+}
+~~~
+
+직접 null 체크를 해서 예외를 만들어 줘도 되지만 `요즘 추세에는 null을 직접 체크하는 방법은 권장하지 않습니다.`
+
+`여러개의 값의 Null 을 체크할 경우`에는 `(List 의경우) 비어있는 값이 출력`됩니다.
+스프링 JPA가 지원하는 `Repository의 Collection 타입들은 결코 Null이 되지 않습니다.`
+스프링 JPA의 특징입니다. 
+
+## Null 어노테이션
+
+스프링 프레임워크 5.0부터 지원하는 Null 어노테이션 지원.
+런타임 시에 Null 여부 체크를 자동으로 심어주는 역할
+
+- @NonNullApi, @NonNull, @Nullable.
+- 런타임 체크 지원 함.
+- JSR 305 어노테이션을 메타 어노테이션으로 가지고 있음. (IDE 및 빌드 툴 지원)
+
+~~~
+<E extends T> E save(@NonNull E entity);
+
+@Nullable
+<E extends T> Optional<E> findById(Id id);
+
+<E extends T> Optional<E> findById(@Nullable Id id);
+~~~
+
+`@NonNull Null 값이 들어올 수 없다고 명시`합니다.
+
+`@Nullable return 값이 Null 값일 수 도 있다고 명시`합니다.
+
+파라미터에 명시하고 싶다면 내부에 작성합니다.
+
+하이버네이트에게 가기전에 Null 체크를 합니다.
+
+# 스프링 데이터 Common 쿼리 만들기
+
+스프링 데이터 저장소의 메소드 이름으로 쿼리 만드는 방법
+
+## 메소드 이름을 분석해서 쿼리 만들기 (CREATE)
+
+~~~
+List<Comment> findByTitleContains(String keyword);
+~~~
+
+TitleContains 에 keyword 가 들어있는 모든 코멘트를 찾아주는 메소드를 정의했습니다.
+`메소드이름을 분석해서 스프링 데이터 Common(Spring JPA) 이 쿼리를 만들어 줍니다.`
+
+## 미리 정의해 둔 쿼리 찾아 사용하기 (USE_DECLARED_QUERY)
+
+~~~
+@Query("SELECT c FROM Comment AS c") - JPQL
+// @Query("SELECT c FROM Comment AS c", nativeQuery = true) - SQL
+List<Comment> findByTitleContains(String keyword);
+~~~
+
+또는 메소드이름을 분석해서 쿼리를 만들지 않고 `메소드에 붙어있는 부과적인 정보를 토대로 쿼리를 만드는 경우`
+기본값은 JPQL 을 사용하고 SQL로 사용한다면 nativeQuery = true 로 선언합니다.
+
+## 미리 정의한 쿼리 찾아보고 없으면 만들기 (CREATE_IF_NOT_FOUND)
+
+~~~
+@SpringBootApplication
++ @EnableJpaRepositories(queryLookupStrategy = QueryLookupStrategy.Key.CREATE)
+public class DemoApplication {
+	public static void main(String[] args) {
+		SpringApplication.run(DemoApplication.class, args);
+	}
+}
+~~~
+
+@EnableJpaRepositories 에플리케이션에 선언함으로서 기능을 사용할 수 있습니다.
+
+쿼리 만드는 방법
+
+- 리턴타입 {접두어}{도입부}By{프로퍼티 표현식}(조건식)[(And|Or){프로퍼티 표현식}(조건식)]{정렬 조건} (매개변수)
+
+## 쿼리의 우선순의 결정과 만들어지는 곳
+
+EnableJpaRepositories 어노테이션에서 queryLookupStrategy 메소드로 직접 들어갑니다.
+그후 QueryLookupStrategy -> JpaQueryLookupStrategy 까지 들어갑니다.
+
+> queryLookupStrategy.java 
+
+CREATE, USE_DECLATED_QUERY, CREATE_IF_NOT_FOUND
+
+QueryLookupStrategy 에서 설정된 쿼리로 만드는지 이름으로 쿼리를 만드는지 정의해 주는 곳
+
+> JpaQueryLookupStrategy.java
+
+CreateQueryLookupStrategy 메소드 이름으로 만들어내는 방법
+
+DeclaredQueryLookupStrategy 메소드의 이미 정의된 쿼리를 찾아내서 만드는 방법
+
+순서는 fromQueryAnnotation -> fromProcedureAnnotation -> fromMethodWithQueryString
+
+    
 
 # 링크
 

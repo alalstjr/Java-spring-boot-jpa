@@ -1,13 +1,14 @@
 package com.example.demo;
 
+import org.springframework.data.domain.Page;
 import org.springframework.data.repository.RepositoryDefinition;
 
 import java.util.List;
 
 @RepositoryDefinition(domainClass = Comment.class, idClass = Long.class)
-public interface CommentRepository {
+public interface CommentRepository extends MyRepository {
 
-    Comment save(Comment comment);
+    List<Comment> findByTitleContains(String keyword);
 
-    List<Comment> findAll();
+    Page<Comment> findByLikeGreaterThanAndPost(int likeCount, Post post, Page page);
 }
