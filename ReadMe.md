@@ -48,6 +48,17 @@
 - [18. 스프링 데이터 Common Repository 인터페이스 정의하기](#스프링-데이터-Common-Repository-인터페이스-정의하기)
 - [19. 스프링 데이터 Common Null 처리하기](#스프링-데이터-Common-Null-처리하기)
     - [19-1. Null 어노테이션](#Null-어노테이션)
+- [20. 스프링 데이터 Common 쿼리 만들기](#스프링-데이터-Common-쿼리-만들기)
+    - [21-1. 메소드 이름을 분석해서 쿼리 만들기 (CREATE)](#메소드-이름을-분석해서-쿼리-만들기-(CREATE))
+    - [20-2. 미리 정의해 둔 쿼리 찾아 사용하기 (USE_DECLARED_QUERY)](#미리-정의해-둔-쿼리-찾아-사용하기-(USE_DECLARED_QUERY))
+    - [20-3. 미리 정의한 쿼리 찾아보고 없으면 만들기 (CREATE_IF_NOT_FOUND)](#미리-정의한-쿼리-찾아보고-없으면-만들기-(CREATE_IF_NOT_FOUND))
+    - [20-4. 쿼리의 우선순의 결정과 만들어지는 곳](#쿼리의-우선순의-결정과-만들어지는-곳)
+- [21. 쿼리만들기 실습](#쿼리만들기-실습)
+    - [21-1. 비동기 쿼리](#비동기-쿼리)
+    - [21-2. 비동기 쿼리 사용법](#비동기-쿼리-사용법)
+- [22. 커스텀 리포지토리 만들기](#커스텀-리포지토리-만들기)
+    - [22-1. 리포지토리 인터페이스에 기능 추가](#리포지토리-인터페이스에-기능-추가)
+    - [22-2. 리포지토리 기본 기능 덮어쓰기 가능](#리포지토리-기본-기능-덮어쓰기-가능)
 
 
 # 관계형 데이터베이스와 자바
@@ -70,18 +81,14 @@ JDBC 를 사용하여 데이터베이스에 접속을 해서 데이터를 저장
 - docker 생성 명령어
 
 ~~~
-docker run 
--p 5432:5432 
--e POSTGRES_PASSWORD=pass 
--e POSTGRES_USER=jjunpro 
--e POSTGRES_DB=springjpa
---name postgres_boot 
--d postgres
+docker run -p 5432:5432 -e POSTGRES_PASSWORD=pass -e POSTGRES_USER=jjunpro -e POSTGRES_DB=springjpa --name postgres_boot -d postgres
 ~~~
 
 - docker 접속 명령어
 
 ~~~
+docker start [id]
+
 docker exec -i -t postgres_boot bash
 
 su - postgres
@@ -116,6 +123,10 @@ psql springjpa
 - docker 컨테이너 실행
 
 > docker start
+
+> docker -e
+
+환경변수
 
 # DB 연결
 
@@ -1960,7 +1971,284 @@ DeclaredQueryLookupStrategy 메소드의 이미 정의된 쿼리를 찾아내서
 
 순서는 fromQueryAnnotation -> fromProcedureAnnotation -> fromMethodWithQueryString
 
+# 쿼리만들기 실습
+
+~~~
+기본 예제
+
+List<Person> findByEmailAddressAndLastname(EmailAddress emailAddress, String lastname);
+// distinct
+List<Person> findDistinctPeopleByLastnameOrFirstname(String lastname, String firstname);
+List<Person> findPeopleDistinctByLastnameOrFirstname(String lastname, String firstname);
+// ignoring case
+List<Person> findByLastnameIgnoreCase(String lastname);
+// ignoring case
+List<Person> findByLastnameAndFirstnameAllIgnoreCase(String lastname, String firstname);
+
+정렬
+
+List<Person> findByLastnameOrderByFirstnameAsc(String lastname);
+List<Person> findByLastnameOrderByFirstnameDesc(String lastname);
+
+페이징
+
+Page<User> findByLastname(String lastname, Pageable pageable);
+Slice<User> findByLastname(String lastname, Pageable pageable);
+List<User> findByLastname(String lastname, Sort sort);
+List<User> findByLastname(String lastname, Pageable pageable);
+
+스트리밍
+
+Stream<User> readAllByFirstnameNotNull();
+try-with-resource 사용할 것. (Stream을 다 쓴다음에 close() 해야 함)
+~~~
+
+## 비동기 쿼리
+
+- @Async Future<User> findByFirstname(String firstname);               
+- @Async CompletableFuture<User> findOneByFirstname(String firstname); 
+- @Async ListenableFuture<User> findOneByLastname(String lastname); 
+
+해당 메소드를 스프링 TaskExecutor에 전달해서 별도의 쓰레드에서 실행함.
+Reactive랑은 다른 것임
+
+권장하지 않는 이유
+
+테스트 코드 작성이 어려움.
+코드 복잡도 증가.
+성능상 이득이 없음. 
+DB 부하는 결국 같고.
+메인 쓰레드 대신 백드라운드 쓰레드가 일하는 정도의 차이.
+단, 백그라운드로 실행하고 결과를 받을 필요가 없는 작업이라면 @Async를 사용해서 응답 속도를 향상 시킬 수는 있다.
+
+## 비동기 쿼리 사용법
+
+`백그라운드에서 동작하는 스레드 풀 에다가 이 메소드를 실행하는 작업을 위임`하는 것
+별도의 스레드에서 동작 시키는 일을 합니다.
+
+@Async 만 붙인다고 작동하지 않습니다.
+
+Application 클래스에 main 쪽에 @EnableAsync 어노테이션을 붙여 줘야 합니다.
+실제 @Async 붙은 메소드 들을 백드라운드 스레드 풀 에 넣어서 실행을 시켜줍니다.
+
+~~~
+@SpringBootApplication
++ @EnableAsync
+public class DemoApplication {
+	public static void main(String[] args) {
+		SpringApplication.run(DemoApplication.class, args);
+	}
+}
+~~~
+
+Non-blocking 코드를 만들 수 있습니다.
+
+https://tech.peoplefund.co.kr/2017/08/02/non-blocking-asynchronous-concurrency.html -[Non-blocking-코드란?]
+
+> CommentRepository.java
+
+~~~
+public interface CommentRepository extends JpaRepository<Comment, Long> {
+    @Async
+    Future<List<Comment>> findByCommentContains(String keyword);
+}
+~~~
+
+`Non-blocking 코드를 만들려면 Future 를 감싸야합니다.`
+
+> CommentRepositoryTest.java
+
+~~~
+class CommentRepositoryTest {
+
+    @Autowired
+    CommentRepository commentRepository;
+
+    public void crud() throws ExecutionException, InterruptedException {
+
+        Future<List<Comment>> future = commentRepository.findByCommentContains("Spring");
+
+        future.get();
+    }
+}
+~~~
+
+`futrue.get()` 결과가 나올때 까지 기다립니다.
+그 전에는 `futrue.isDone()` 으로 결과가 나왔는지 안나왔는지 확인을 할 수 있습니다.
+
+# 커스텀 리포지토리 만들기
+
+쿼리 메소드(쿼리 생성과 쿼리 찾아쓰기)로 해결이 되지 않는 경우 직접 코딩으로 구현 가능.
+
+- 스프링 데이터 리포지토리 인터페이스에 기능 추가
+- 스프링 데이터 리포지토리 기본 기능 덮어쓰기 가능
+- 구현 방법
+    - a. 커스텀 리포지토리 인터페이스 정의
+    - b. 인터페이스 구현 클래스 만들기 (기본 접미어는 Impl)
+    - c. 엔티티 리포지토리에 커스텀 리포지토리 인터페이스 추가
+
+## 리포지토리 인터페이스에 기능 추가
+
+> Post.java
+
+~~~
+@Entity
+public class Post {
+
+    @Id
+    @GeneratedValue
+    private Long id;
+
+    private String title;
+
+    @Lob
+    private String content;
+}
+~~~
+
+내용 같은 경우 255자를 넘을 수 도 있으니 @Lob 어노테이션을 선언해서 255 자 이상을 설정합니다.
+
+> PostRepository.java
+
+~~~
+public interface PostRepository extends JpaRepository<Post, Long> {
     
+}
+~~~
+
+PostRepository 저장소를 하나 만들고
+
+> PostCustomRepository.java
+
+~~~
+public interface PostCustomRepository {
+    List<Post> findMyPost();
+}
+~~~
+
+커스텀한 인터페이스를 추가해서 구현하는 방법 우선 PostCustomRepository 를 만들어 줍니다.
+PostCustomRepository 인터페이스는 굉장히 독립적입니다. 그 뜻은 Spring, JPA 아무것도 의존하고 있지 않습니다. 완전 깔끔한 POJO 상태입니다.
+
+이제 이것을 구현하는 구현체를 만들어야 합니다.
+
+네이밍은 뒤에 Impl 을 붙여서 생성해야 합니다.
+
+> PostCustomRepositoryImpl.java
+
+~~~
+@Repository
+@Transactional
+public class PostCustomRepositoryImpl implements PostCustomRepository {
+
+    @Autowired
+    EntityManager entityManager;
+
+    @Override
+    public List<Post> findMyPost() {
+        System.out.println("custom findMyPost");
+        return entityManager.createQuery("SELECT P FROM Post AS p", Post.class)
+                .getResultList();
+    }
+}
+~~~
+
+커스텀 리포지토리를 만들었으니 이제 상속하여 사용해보도록 하겠습니다.
+
+> PostRepository.java
+
+~~~
+public interface PostRepository extends JpaRepository<Post, Long>, PostCustomRepository {
+    
+}
+~~~
+
+JpaRepository가 지원하는 기능도 사용하면서 내가 만든 PostCustomRepository 의 기능도 사용하겠다.
+그리고 PostRepository 결과를 확인하기 위해서 Test 를 하나 만듭니다.
+
+> PostRepositoryTest.java
+
+~~~
+@DataJpaTest
+class PostRepositoryTest {
+
+    @Autowired
+    PostRepository postRepository;
+
+    @Test
+    void contextLoads() {
+        postRepository.findMyPost();
+    }
+}
+~~~
+
+~~~
+custom findMyPost
+
+Hibernate: 
+    select
+        post0_.id as id1_0_,
+        post0_.content as content2_0_,
+        post0_.created as created3_0_,
+        post0_.title as title4_0_ 
+    from
+        post post0_
+~~~
+
+정상적으로 기능을 추가한것이 출력되었습니다.
+
+## 리포지토리 기본 기능 덮어쓰기 가능
+
+기본 제공하는 JpaRepository 기능이 개발자 마음에 들지 않는 메소드가 있다면 덮어 사용할 수 있습니다.
+
+어떤 블로그의 글 중에 delete() 기능이 매우 비효율 적이다 라는 글이 있었습니다.
+"어차피 데이터를 삭제를 할것인데 왜 로딩을 하느냐" 라는 주장이였습니다. 확인을 해보겠습니다.
+
+> JpaRepository.java / SimpleJpaRepository.java
+
+~~~
+public void delete(T entity) {
+
+    Assert.notNull(entity, "Entity must not be null!");
+
+    if (entityInformation.isNew(entity)) {
+        return;
+    }
+
+    Class<?> type = ProxyUtils.getUserClass(entity);
+
+    T existing = (T) em.find(type, entityInformation.getId(entity));
+
+    // if the entity to be deleted doesn't exist, delete is a NOOP
+    if (existing == null) {
+        return;
+    }
+
+    em.remove(em.contains(entity) ? entity : em.merge(entity));
+}
+~~~
+
+em.contains(entity) 매니저의 캐싱이된 엔티티가 아닌경우에 em.merge(entity) 를 실행합니다.
+merge Detached 상태로 사용하다가 다시 위 기능을 사용하고 싶다면 Persistent 상태로 전환합니다.
+그 후 삭제를 합니다. 그렇다고 바로 delete 쿼리가 바로 날아가는 것은 아닙니다. removed 상태가 됩니다. 아직은 엔티티 매니저가 관리를 하는 상태입니다.
+
+엔티티 매니저가 remove를 사용하는 이유 케스케이드 해당 엔티티가 지워지면 다른 엔티티도 지워줘야 하는 엔티티가 있다. ex) post 삭제시 comment 댓글 삭제도 해줘야하는 경우 
+이런경우 엔티티 매니저를 통해서 사용해야 합니다. 이런 이유로 인해서 데이터를 로딩하며 체크하는 것입니다.
+
+그래도 나는 내가 재 정의해서 delete() 메소드를 사용하고 싶다. 하면 
+
+> PostCustomRepository.java
+
+~~~
++ public interface PostCustomRepository<T> {
+
+    List<Post> findMyPost();
+
++   void delete(T entity);
+}
+~~~
+
+jpa 기본 메소드 delete 와 커스텀한 delete 와 중복이 됩니다.
+하지만 Spring data JPA는 항상 내가 만든 커스텀 구현체를 우선순위를 높게 줍니다.
 
 # 링크
 
