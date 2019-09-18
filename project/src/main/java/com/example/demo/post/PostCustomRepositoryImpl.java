@@ -19,5 +19,12 @@ public class PostCustomRepositoryImpl implements PostCustomRepository {
         System.out.println("custom findMyPost");
         return entityManager.createQuery("SELECT p FROM Post AS p", Post.class)
                 .getResultList();
+
+    }
+
+    @Override
+    public void delete(Object entity) {
+        System.out.println("custom delete");
+        entityManager.remove(entity);
     }
 }

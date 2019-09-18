@@ -59,6 +59,7 @@
 - [22. 커스텀 리포지토리 만들기](#커스텀-리포지토리-만들기)
     - [22-1. 리포지토리 인터페이스에 기능 추가](#리포지토리-인터페이스에-기능-추가)
     - [22-2. 리포지토리 기본 기능 덮어쓰기 가능](#리포지토리-기본-기능-덮어쓰기-가능)
+- [23. 기본 리포지토리 커스터마이징](#기본-리포지토리-커스터마이징)
 
 
 # 관계형 데이터베이스와 자바
@@ -2249,6 +2250,103 @@ merge Detached 상태로 사용하다가 다시 위 기능을 사용하고 싶�
 
 jpa 기본 메소드 delete 와 커스텀한 delete 와 중복이 됩니다.
 하지만 Spring data JPA는 항상 내가 만든 커스텀 구현체를 우선순위를 높게 줍니다.
+
+> PostCustomRepositoryImpl.java
+
+~~~
+@Repository
+@Transactional
+public class PostCustomRepositoryImpl implements PostCustomRepository {
+
+    @Autowired
+    EntityManager entityManager;
+
+    ...
+
+    @Override
+    public void delete(Object entity) {
+        System.out.println("custom delete");
+        entityManager.remove(entity);
+    }
+}
+~~~
+
+> PostRepository.java
+
+~~~
+public interface PostRepository extends JpaRepository<Post, Long>, PostCustomRepository<Post> { }
+~~~
+
+# 기본 리포지토리 커스터마이징
+
+`모든 리포지토리에 공통적`으로 추가하고 싶은 기능이 있거나 덮어쓰고 싶은 기본 기능이 있다면 
+
+- JpaRepository를 상속 받는 인터페이스 정의 @NoRepositoryBean
+- 기본 구현체를 상속 받는 커스텀 구현체 만들기
+- @EnableJpaRepositories에 설정 repositoryBaseClass
+
+> MyRepository.java
+
+~~~
+@NoRepositoryBean
+public interface MyRepository<T, ID extends Serializable> extends JpaRepository<T, ID> {
+    boolean contains(T entiry);
+}
+~~~
+
+중간에 사용되는 Repository 는 Bean 등록을 제외하기 위해서 @NoRepositoryBean 꼭 붙여 줍니다.
+T 엔티티가 contains가 존재유무를 파악하는 메소드 그리고 구현체를 하나 만들어 줍니다.
+
+> AllMyRepository.java
+
+~~~
+public class AllMyRepository<T, ID extends Serializable> extends SimpleJpaRepository<T, ID> implements MyRepository<T, ID> {
+
+    private EntityManager entityManager;
+
+    public AllMyRepository(JpaEntityInformation<T, ?> entityInformation, EntityManager entityManager) {
+        super(entityInformation, entityManager);
+        this.entityManager = entityManager;
+    }
+
+    @Override
+    public boolean contains(T entity) {
+        return entityManager.contains(entity);
+    }
+}
+~~~
+
+생성자가 하나 필요합니다. 왜냐하면 SimpleJpaRepository 부모에다가 super로 호출할 때 entityInformation, entityManager 두개의 인자를 꼭 전달해 줘야하기 때문에 두개의 인자를 받는 생성자를 추가해서 생성하였습니다.
+
+entityManager 가 전달이 됩니다. 직접 bean으로 만들어 전달하는것이 아니라 상위 클래스에서 전달받은 entityManager 를 전달하면 됩니다. (this.entityManager = entityManager;)
+
+contains 여부를 확인합니다.
+
+> DemoApplication.java
+
+~~~
+@SpringBootApplication
++ @EnableJpaRepositories(repositoryBaseClass = AllMyRepository.class)
+public class DemoApplication {
+	public static void main(String[] args) {
+		SpringApplication.run(DemoApplication.class, args);
+	}
+}
+~~~
+
+@EnableJpaRepositories 어노테이션을 활용하여 repositoryBaseClass 를 설정하여 전역에 AllMyRepository 를 등록합니다.
+
+최종적으로 PostRepository 에 등록 사용해 보겠습니다.
+
+~~~
+public interface PostRepository extends MyRepository<Post, Long> {
+
+}
+~~~
+
+JpaRepository 대신에 MyRepository 를 상속받음으로서 
+커스텀한 `Repository 의 contains 메소드를 상속받으면서` 동시에 
+`JpaRepository 까지 상속받아 사용할 수 있습니다.`
 
 # 링크
 
