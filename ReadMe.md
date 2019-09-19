@@ -66,6 +66,8 @@
 - [25. QueryDSL](#QueryDSL)
     - [25-1. QueryDSL Gradle 설정](#QueryDSL-Gradle-설정)
     - [25-2. QueryDSL 사용법](#QueryDSL-사용법)
+- [26. Web DomainClassConverter](#Web-DomainClassConverter)
+- [27. Pageable과 Sort 매개변수](#Pageable과-Sort-매개변수)
 
 
 # 관계형 데이터베이스와 자바
@@ -2801,7 +2803,158 @@ binding parameter [2] as [VARCHAR] - [jpa%]
 
 java 코드로 넣어준대로 쿼리가 정상적으로 실행되고 값 또한 정상적으로 들어갔습니다.
 
+# Web DomainClassConverter
 
+- 도메인 클래스 컨버터
+    - 도메인의 ID 값을 도메인으로 받아서 파라미터로 받을 수 가 있습니다.
+
+> Post.java
+
+~~~
+@Entity
+@Getter
+@Setter
+public class Post {
+
+    @Id
+    @GeneratedValue
+    private Long Id;
+
+    private String title;
+
+    @Temporal(TemporalType.TIMESTAMP)
+    private Date created;
+}
+~~~
+
+> PostRepository.java
+
+~~~
+public interface PostRepository extends JpaRepository<Post, Long> {
+    
+}
+~~~
+
+> PostController.java
+
+~~~
+@RestController
+public class PostController {
+
+    @Autowired
+    PostRepository postRepository;
+
+    @GetMapping("/posts/{id}")
+    public String getPost(@PathVariable Long id) {
+        Optional<Post> byId = postRepository.findById(id);
+        Post post = byId.get();
+
+        return post.getTitle();
+    }
+}
+
+~~~
+
+GetMapping 으로 id 값은 문자열로 들어오지만 Spring web 바인더 기능으로 Long 으로 바꿔줍니다.
+
+> PostControllerTest.java
+
+~~~
+@SpringBootTest
+@AutoConfigureMockMvc
+class PostControllerTest {
+
+    @Autowired
+    MockMvc mockMvc;
+
+    @Autowired
+    PostRepository postRepository;
+
+    @Test
+    public void getPost() throws Exception {
+        Post post = new Post();
+        post.setTitle("Spring");
+        postRepository.save(post);
+
+        mockMvc.perform(get("/posts/" + post.getId()))
+                .andDo(print())
+                .andExpect(status().isOk())
+                .andExpect(content().string("Spring"));
+    }
+}
+~~~
+
+DomainClassConverter 하나의 타입을 다른 타입으로 변환하는 인터페이스 
+크게 두가지의 컨버터가 실행이 됩니다. 
+
+ToEntityConverter 어떠한 엔티티의 아이디를 받아서 그 엔티티 타입으로 변환하는 컨버터가 등록이 됩니다.
+ToIdConverter 그 엔티티의 아이디 타입으로 변환하는 컨버터
+
+> PostController.java
+
+~~~
+@RestController
+public class PostController {
+
+    @Autowired
+    PostRepository postRepository;
+
+    @GetMapping("/posts/{id}")
+    public String getPost(@PathVariable("id") Post post) {
+        return post.getTitle();
+    }
+}
+~~~
+
+Post 로 받아 오겠다. 그때 컨버터가 동작을 해서 Long 을 Post 으로 변환해서 값을 자동으로 맞게 넣어줍니다.
+
+# Pageable과 Sort 매개변수
+
+> PostController.java
+
+~~~
+@RestController
+public class PostController {
+
+    @Autowired
+    PostRepository postRepository;
+
+    @GetMapping("/posts")
+    public Page<Post> getPosts(Pageable pageable) {
+        return postRepository.findAll(pageable);
+    }
+}
+~~~
+
+> PostControllerTest.java
+
+~~~
+@SpringBootTest
+@AutoConfigureMockMvc
+class PostControllerTest {
+
+    @Autowired
+    MockMvc mockMvc;
+
+    @Autowired
+    PostRepository postRepository;
+
+    @Test
+    public void getPosts() throws Exception {
+        Post post = new Post();
+        post.setTitle("Spring");
+        postRepository.save(post);
+
+        mockMvc.perform(get("/posts/")
+                    .param("page", "0")
+                    .param("size", "10")
+                    .param("sort", "created,desc")
+                    .param("sort", "title"))
+                .andDo(print())
+                .andExpect(status().isOk());
+    }
+}
+~~~
 
 # 링크
 
