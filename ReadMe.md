@@ -60,6 +60,9 @@
     - [22-1. 리포지토리 인터페이스에 기능 추가](#리포지토리-인터페이스에-기능-추가)
     - [22-2. 리포지토리 기본 기능 덮어쓰기 가능](#리포지토리-기본-기능-덮어쓰기-가능)
 - [23. 기본 리포지토리 커스터마이징](#기본-리포지토리-커스터마이징)
+- [24. 도메인 이벤트](#도메인-이벤트)
+    - [24-1. PostListener 클래스를 만들지 않고 구현하는 방법](#PostListener-클래스를-만들지-않고-구현하는-방법)
+    - [24-2. Spring Data 의 도베인 이벤트](#Spring-Data-의-도베인-이벤트)
 
 
 # 관계형 데이터베이스와 자바
@@ -2347,6 +2350,249 @@ public interface PostRepository extends MyRepository<Post, Long> {
 JpaRepository 대신에 MyRepository 를 상속받음으로서 
 커스텀한 `Repository 의 contains 메소드를 상속받으면서` 동시에 
 `JpaRepository 까지 상속받아 사용할 수 있습니다.`
+
+# 도메인 이벤트
+
+도메인 관련 이벤트를 발생시키기
+
+- 스프링 프레임워크의 이벤트 관련 기능
+    - https://docs.spring.io/spring/docs/current/spring-framework-reference/core.html#context-functionality-events
+    - ApplicationContext extends ApplicationEventPublisher
+    - 이벤트: extends ApplicationEvent
+    - 리스너
+        - implements ApplicationListener<E extends ApplicationEvent>
+        - @EventListener
+
+- 스프링 데이터의 도메인 이벤트 Publisher
+    - @DomainEvents
+    - @AfterDomainEventPublication
+    - extends AbstractAggregateRoot<E>
+    - 현재는 save() 할 때만 발생 합니다.
+
+Post 와 관련된 이벤트를 하나 만들겠습니다.
+Post 라는 글을 사용자가 "발행" 이라는 버튼을 눌렀을때만 퍼블리싱이 된다고 가정하고
+그런 퍼블리싱이 일어났을때 개발자가 별도의 이벤트 기반의 프로그래밍을 해야한다고 가정한다.
+
+Post 가 퍼블리싱 됐다. 라는 이벤트를 하나 만들어 줍니다.
+
+> PostPublishedEvent.java
+
+~~~
+public class PostPublishedEvent extends ApplicationEvent {
+
+    private final Post post;
+
+    /**
+     * Create a new {@code ApplicationEvent}.
+     *
+     * @param source the object on which the event initially occurred or with
+     *               which the event is associated (never {@code null})
+     * @param post
+     */
+    public PostPublishedEvent(Object source, Post post) {
+        super(source);
+        this.post = (Post) source;
+    }
+
+    public Post getPost() {
+        return post;
+    }
+}
+~~~
+
+Spring 에서 지원하는 ApplicationEvent 를 상속받아 오버라이드 합니다.
+
+Post 정보가 필요하므로 Post post 를 불러옵니다.
+
+이벤트를 발생시키는 곳(PostPublishedEvent) 이 Post라고 가정합니다.
+
+어떤 Post의 대한 이벤트였는지 Post를 참조할 수 있도록 getter 생성
+
+> PostRepositoryTest.java
+
+~~~ 
+@DataJpaTest
+class PostRepositoryTest {
+
+    @Autowired
+    ApplicationContext applicationContext;
+
+    @Test
+    public void event() {
+        Post post = new Post();
+        post.setTitle("event");
+        PostPublishedEvent event = new PostPublishedEvent(post);
+
+        applicationContext.publishEvent(event);
+    }
+}
+~~~
+
+post에서 이벤트를 만들었다고 가정을 하고 실제로는 test에서 퍼블리싱을 하고있지만
+이벤트를 post에서 던지는 것처럼 할것입니다.
+
+이제 이벤트 리스너가 필요합니다.
+
+> PostListener.java
+
+~~~
+public class PostListener implements ApplicationListener<PostPublishedEvent> {
+
+    @Override
+    public void onApplicationEvent(PostPublishedEvent event) {
+        System.out.println("====================");
+        System.out.println(event.getPost() + "is published!!");
+        System.out.println("====================");
+    }
+}
+
+or 또는
+
+public class PostListener {
+
+    @EventListener
+    public void onApplicationEvent(PostPublishedEvent event) {
+        System.out.println("====================");
+        System.out.println(event.getPost() + "is published!!");
+        System.out.println("====================");
+    }
+}
+~~~
+
+기본적으로 이벤트 리스터는 ApplicationListener 을 상속받아 오버라이드 합니다.
+이벤트 실행시 발생하는 onApplicationEvent 메소드
+PostListener 가 Bean으로 등록이 안되어 있는데 등록을 해줘야 합니다.
+간단하게 PostRepositoryTestConfig 를 하나 만들어 Bean 등록합니다.
+
+여기서 잠깐! 근데 왜 Config 따로 만들어 Bean 등록을 하나요? 
+PostListener 직접 @Component 로 Bean 등록을 하면 되는거 아닌가요?
+결론은 아닙니다. 
+이유는 Test 클래스에 @DataJpaTest 어노테이션으로 Jpa 관련 Bean 만 가져오도록 되어 었어서
+@Component 로 등록된 정보는 무시해서 가져오지 않게 됩니다. 
+그렇다고 @Repository 를 붙이자니 역할에 맞지 않음으로 Config 를 따로 만들어 
+불러오게 했습니다.
+
+> PostRepositoryTestConfig.java
+
+~~~
+@Configuration
+public class PostRepositoryTestConfig {
+
+    @Bean
+    public PostListener postListener() {
+        return new PostListener();
+    }
+}
+~~~
+
+PostRepositoryTest 이곳에 추가 설정을 import 해줍니다. 
+
+> PostRepositoryTest.java
+
+~~~
+@DataJpaTest
++ @Import(PostRepositoryTestConfig.class)
+class PostRepositoryTest {
+    ...
+}
+~~~
+
+테스트가 실행될때 PostRepositoryTestConfig 같이 불러와서 Bean으로 등록이 됩니다.
+그 후 even 메소드가 가 실행이되면 이전에 작성한 이벤트 리스너 클래스가 잡아서 메세지를 출력합니다.
+
+## PostListener 클래스를 만들지 않고 구현하는 방법
+
+> PostRepositoryTestConfig.java
+
+~~~
+@Configuration
+public class PostRepositoryTestConfig {
+
+    @Bean
+    public ApplicationListener<PostPublishedEvent> postListener() {
+        return event -> {
+            System.out.println("====================");
+            System.out.println(event.getPost() + "is published!!");
+            System.out.println("====================");
+        };
+    }
+}
+~~~
+
+## Spring Data 의 도베인 이벤트
+
+이벤트 자동 퍼블리싱 기능을 제공해줍니다.
+Repository 를 save 할때만 동작합니다.
+이벤트를 모아두었다가 save할때 전부 전송시킵니다.
+
+이벤트를 모아두는 곳이 @DomainEvents 어노테이션을 가지고있는 메소드 입니다.
+
+다 보낸다음에 그동안 쌓여있던 이벤트를 컬렉션에 담아두었던 곳을 비워야 합니다. 안 그러면 메모리 누수의 큰 문제가 생깁니다. 
+이를 자동으로 비워주는 메소드가 @AfterDomainEventPublication 입니다.
+
+이런 모아두는 메소드와 지어주는 메소드를 따로 구현해야 하지만 미리 구현되어 있는 AbstractAggregateRoot를 사용하겠습니다.
+
+> Post.java
+
+~~~
+@Entity
++ public class Post extends AbstractAggregateRoot<Post> {
+    ...
+}
+~~~
+
+Spring Data 가 제공해주는 기능 AbstractAggregateRoot 를 상속받습니다.
+AbstractAggregateRoot 내부에 들어가 보면 이미 DomainEvents와 AfterDomainEventPublication를 가지고 있습니다.
+
+~~~
+@Test
+public void event() {
+    Post post = new Post();
+    post.setTitle("event");
+    PostPublishedEvent event = new PostPublishedEvent(post);
+
+    applicationContext.publishEvent(event);
+}
+~~~
+
+이것은 위와 같은 개발자가 직접 이벤트를 만들고 이벤트를 던지고 하는 코드들을 직접 할 필요가 없어집니다. save 할때 이벤트만 만들기만 하면 됩니다.
+
+> Post.java
+
+~~~
+@Entity
+public class Post extends AbstractAggregateRoot<Post> {
+    ...
+    public Post publish() {
+        this.registerEvent(new PostPublishedEvent(this));
+        return this;
+    }
+}
+~~~
+
+Post 엔티티에서 publish 하는 이벤트를 만들어서 save할때 메소드를 실행시킵니다.
+
+> PostRepositoryTest.java
+
+~~~
+@DataJpaTest
+@Import(PostRepositoryTestConfig.class)
+class PostRepositoryTest {
+
+    @Autowired
+    PostRepository postRepository;
+
+    @Test
+    void contextLoads() {
+        Post post = new Post();
+        post.setTitle("title");
+
+        postRepository.save(post.publish());
+    }
+}
+~~~
+
+save 할때 모여있는 이벤트를 발생 시킵니다.
 
 # 링크
 
