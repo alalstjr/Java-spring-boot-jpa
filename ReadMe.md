@@ -63,6 +63,9 @@
 - [24. 도메인 이벤트](#도메인-이벤트)
     - [24-1. PostListener 클래스를 만들지 않고 구현하는 방법](#PostListener-클래스를-만들지-않고-구현하는-방법)
     - [24-2. Spring Data 의 도베인 이벤트](#Spring-Data-의-도베인-이벤트)
+- [25. QueryDSL](#QueryDSL)
+    - [25-1. QueryDSL Gradle 설정](#QueryDSL-Gradle-설정)
+    - [25-2. QueryDSL 사용법](#QueryDSL-사용법)
 
 
 # 관계형 데이터베이스와 자바
@@ -2593,6 +2596,212 @@ class PostRepositoryTest {
 ~~~
 
 save 할때 모여있는 이벤트를 발생 시킵니다.
+
+# QueryDSL
+
+findByFirstNameIngoreCaseAndLastNameStartsWithIgnoreCase(String firstName, String lastName) 
+이게 이게 뭐냐... @_@ 어지러우시죠?? 이 정도 되면 그냥 한글로 주석을 달아 두시는게...
+
+- 여러 쿼리 메소드는 대부분 두 가지 중 하나.
+    - Optional<T> findOne(Predicate): 이런 저런 조건으로 무언가 하나를 찾는다.
+    - List<T>|Page<T>|.. findAll(Predicate): 이런 저런 조건으로 무언가 여러개를 찾는다.
+    - QuerydslPredicateExecutor (https://docs.spring.io/spring-data/commons/docs/current/api/org/springframework/data/querydsl/QuerydslPredicateExecutor.html) 인터페이스
+
+- QueryDSL
+    - http://www.querydsl.com/
+    - 타입 세이프한 쿼리 만들 수 있게 도와주는 라이브러리
+    - JPA, SQL, MongoDB, JDO, Lucene, Collection 지원
+    - QueryDSL JPA 연동 가이드 (http://www.querydsl.com/static/querydsl/4.1.3/reference/html_single/#jpa_integration)
+
+- 스프링 데이터 JPA + QueryDSL
+    - 인터페이스: QuerydslPredicateExecutor<T>
+    - 구현체: QuerydslPredicateExecutor<T>
+
+새로운 프로젝트 생성 후 querydsl 의존성 추가와 함께 설정을 해보도록 하겠습니다.
+
+## QueryDSL Gradle 설정
+
+Gradle 5.0 버전 기준 의존성 추가
+
+~~~
++buildscript {
++	ext {
++		querydslPluginVersion = '1.0.10' // 플러그인 버전
++	}
++	repositories {
++		maven { url "https://plugins.gradle.org/m2/" } // 플러그인 저장소
++	}
++	dependencies {
++		classpath("gradle.plugin.com.ewerk.gradle.plugins:querydsl-plugin:${querydslPluginVersion}") // querydsl 플러그인 의존성 등록
++	}
++}
+
+plugins {
+	id 'org.springframework.boot' version '2.2.0.M6'
+	id 'io.spring.dependency-management' version '1.0.8.RELEASE'
+	id 'java'
+}
+
+group = 'com.example'
+version = '0.0.1-SNAPSHOT'
+sourceCompatibility = '1.8'
+
+repositories {
+	mavenCentral()
+	maven { url 'https://repo.spring.io/milestone' }
+}
+
+dependencies {
+	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+	runtimeOnly 'com.h2database:h2'
+	runtimeOnly 'org.postgresql:postgresql'
+	testImplementation('org.springframework.boot:spring-boot-starter-test') {
+		exclude group: 'org.junit.vintage', module: 'junit-vintage-engine'
+	}
+
+	compile('org.projectlombok:lombok')
+
++	compile("com.querydsl:querydsl-jpa") // querydsl
++	compile("com.querydsl:querydsl-apt") // querydsl
+}
+
+test {
+	useJUnitPlatform()
+}
+
+// querydsl 적용
++ apply plugin: "com.ewerk.gradle.plugins.querydsl" // Plugin 적용
++ def querydslSrcDir = 'src/main/generated' // QClass 생성 위치
+
++ querydsl {
++ 	library = "com.querydsl:querydsl-apt"
++ 	jpa = true
++ 	querydslSourcesDir = querydslSrcDir
++ }
+
++ sourceSets {
++ 	main {
++ 		java {
++ 			srcDirs = ['src/main/java', querydslSrcDir]
++ 		}
++ 	}
++ }
+
++ compileQuerydsl{
++ 	options.annotationProcessorPath = configurations.querydsl
++ }
+
++ configurations {
++ 	querydsl.extendsFrom compileClasspath
++ }
+~~~
+
+Java Config Bean 등록
+
+> QuerydslConfiguration.java
+
+~~~
+@Configuration
+public class QuerydslConfiguration {
+
+    @PersistenceContext
+    private EntityManager entityManager;
+
+    @Bean
+    public JPAQueryFactory jpaQueryFactory() {
+        return new JPAQueryFactory(entityManager);
+    }
+}
+~~~
+
+간단한 예제 도메인 생성
+
+> Account.java
+
+~~~
+@Entity
+public class Account {
+
+    @Id
+    @GeneratedValue
+    private Long Id;
+
+    private String username;
+
+    private String firstName;
+
+    private String lastName;
+}
+~~~
+
+QClass 생성 방법
+
+> IntelliJ의 Gradle View를 열어서 Tasks -> other -> compileQuerydsl를 더블클릭으로 실행
+
+build.gradle에서 설정한 위치 (src/main/generated/) 을 보시면 아래와 같이 QClass가 생성된 것을 확인할 수 있습니다.
+
+## QueryDSL 사용법
+
+> AccountRepository.java
+
+~~~
+public interface AccountRepository extends JpaRepository<Account, Long>, QuerydslPredicateExecutor<Account> {
+
+}
+~~~
+
+QuerydslPredicateExecutor<> 인터페이스를 상속 받습니다.
+해당 인터페이스가 제공하는 메소드를 사용할 수 있습니다.
+테스트 코드에서 사용해 보도록 하겠습니다.
+
+> AccountRepositoryTest.java
+
+~~~
+@DataJpaTest
+class AccountRepositoryTest {
+
+    @Autowired
+    AccountRepository accountRepository;
+
+    @Test
+    public void show() {
+        QAccount account = QAccount.account;
+        Predicate predicate = account.firstName
+                .containsIgnoreCase("spring")
+                .and(account.lastName.startsWith("jpa"));
+
+        Optional<Account> one = accountRepository.findOne(predicate);
+        assertThat(one).isEmpty();
+    }
+}
+~~~
+
+결과 
+
+~~~
+Hibernate: 
+    select
+        account0_.id as id1_0_,
+        account0_.first_name as first_na2_0_,
+        account0_.last_name as last_nam3_0_,
+        account0_.username as username4_0_ 
+    from
+        account account0_ 
+    where
+        (
+            lower(account0_.first_name) like ? escape '!'
+        ) 
+        and (
+            account0_.last_name like ? escape '!'
+        )
+
+binding parameter [1] as [VARCHAR] - [%spring%]
+binding parameter [2] as [VARCHAR] - [jpa%]
+~~~
+
+java 코드로 넣어준대로 쿼리가 정상적으로 실행되고 값 또한 정상적으로 들어갔습니다.
+
+
 
 # 링크
 

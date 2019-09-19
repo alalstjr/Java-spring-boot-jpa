@@ -35,9 +35,8 @@ dependencies {
 
 	compile('org.projectlombok:lombok')
 
-	// querydsl
-	compile("com.querydsl:querydsl-jpa")
-	compile("com.querydsl:querydsl-apt")
+	compile("com.querydsl:querydsl-jpa") // querydsl
+	compile("com.querydsl:querydsl-apt") // querydsl
 }
 
 test {
