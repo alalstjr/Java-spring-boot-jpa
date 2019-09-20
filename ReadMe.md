@@ -68,6 +68,10 @@
     - [25-2. QueryDSL 사용법](#QueryDSL-사용법)
 - [26. Web DomainClassConverter](#Web-DomainClassConverter)
 - [27. Pageable과 Sort 매개변수](#Pageable과-Sort-매개변수)
+- [28. HATEOAS](#HATEOAS)
+    - [28-1. IntelliJ IDEA 2018.3 이전 HATEOAS](#IntelliJ-IDEA-2018.3-이전-HATEOAS)
+    - [28-2. IntelliJ IDEA 2018.3 이후 HATEOAS](#IntelliJ-IDEA-2018.3-이후-HATEOAS)
+    - [28-3. HATEOAS 테스트](#HATEOAS-테스트)
 
 
 # 관계형 데이터베이스와 자바
@@ -2955,6 +2959,187 @@ class PostControllerTest {
     }
 }
 ~~~
+
+# HATEOAS 
+
+- Page를 PagedResource로 변환하기
+    - 일단 HATEOAS 의존성 추가 (starter-hateoas)
+    - 핸들러 매개변수로 PagedResourcesAssembler
+
+HATEOAS 를 사용하기전에 의존성을 추가합니다.
+
+~~~
+// https://mvnrepository.com/artifact/org.springframework.boot/spring-boot-starter-hateoas
+compile group: 'org.springframework.boot', name: 'spring-boot-starter-hateoas', version: '2.1.4.RELEASE'
+~~~
+
+## IntelliJ IDEA 2018.3 이전 HATEOAS
+
+> PostController.java
+
+~~~
+@GetMapping("/posts")
+public PagedResources<Resource<Post>> getPosts(Pageable pageable, PagedResourcesAssembler<Post> assembler) {
+    Page<Post> all = posts.findAll(pageable);
+    return assembler.toResource(all);
+}
+~~~
+
+PagedResourcesAssembler<T> assembler 매개변수로 전달받아 사용할 수 있습니다.
+이 엔티티 타입의 리소스를 만들어 줍니다. Resource<Post> 이것을 또 PagedResources<> 또 감싸줍니다.
+PagedResourcesAssembler 가 PagedResources를 만들어 줍니다.
+
+assembler.toResource 는 page를 받습니다.
+
+## IntelliJ IDEA 2018.3 이후 HATEOAS 
+
+> PostController.java
+
+~~~
+@RestController
+public class PostController {
+
+    @Autowired
+    private PostRepository postRepository;
+
+    @GetMapping("/posts")
+    public PagedModel<EntityModel<Post>> getPosts(Pageable pageable, PagedResourcesAssembler<Post> assembler) {
+        Page page = postRepository.findAll(pageable);
+        return assembler.toModel(page);
+    }
+}
+~~~
+
+PagedResourcesAssembler<T> assembler 매개변수로 전달받아 사용할 수 있습니다.
+이 엔티티 타입의 리소스를 만들어 줍니다. EntityModel<Post> 이것을 또 PagedModel<> 또 감싸줍니다.
+PagedResourcesAssembler 가 PagedModel를 만들어 줍니다.
+
+assembler.toModel 는 page를 받습니다.
+
+https://stackoverflow.com/questions/55770163/resource-and-controllerlinkbuilder-not-found-and-deprecated - [현재-ResourceIDE-(IntelliJ-IDEA-2018.3)]
+
+https://spring.io/blog/2019/03/05/spring-hateoas-1-0-m1-released#overhaul - [Spring-HATEOAS-1.0-M1-released]
+
+## HATEOAS 테스트
+
+> PostControllerTest.java
+
+~~~
+import org.springframework.test.web.servlet.ResultMatcher;
+import static org.assertj.core.internal.bytebuddy.matcher.ElementMatchers.is;
+
+@Test
+public void getPosts() throws Exception {
+    Post post = new Post();
+    post.setTitle("Spring");
+    postRepository.save(post);
+
+    mockMvc.perform(get("/posts/")
+                .param("page", "3")
+                .param("size", "10")
+                .param("sort", "created,desc")
+                .param("sort", "title"))
+            .andDo(print())
+            .andExpect(status().isOk())
+            .andExpect((ResultMatcher) jsonPath("$.content[0].title", is("Spring")));
+}
+
+@Test
+public void createPosts() {
+    int postsCount = 100;
+    while (postsCount > 0) {
+        Post post = new Post();
+        post.setTitle("Spring");
+        postRepository.save(post);
+        postsCount--;
+    }
+}
+~~~
+
+> 결과
+
+~~~
+
+{  
+   "content":[  
+...
+      {  
+         "id":111,
+         "title":"jpa",
+         "created":null
+      }
+   ],
+   "pageable":{  
+      "sort":{  
+         "sorted":true,
+         "unsorted":false
+      },
+      "offset":20,
+      "pageSize":10,
+      "pageNumber":2,
+      "unpaged":false,
+      "paged":true
+   },
+   "totalElements":200,
+   "totalPages":20,
+   "last":false,
+   "size":10,
+   "number":2,
+   "first":false,
+   "numberOfElements":10,
+   "sort":{  
+      "sorted":true,
+      "unsorted":false
+   }
+}
+
+
+리소스로 변환한 뒤
+
+{  
+   "_embedded":{  
+      "postList":[  
+         {  
+            "id":140,
+            "title":"jpa",
+            "created":null
+         },
+...
+         {  
+            "id":109,
+            "title":"jpa",
+            "created":null
+         }
+      ]
+   },
+   "_links":{  
+      "first":{  
+         "href":"http://localhost/posts?page=0&size=10&sort=created,desc&sort=title,asc"
+      },
+      "prev":{  
+         "href":"http://localhost/posts?page=1&size=10&sort=created,desc&sort=title,asc"
+      },
+      "self":{  
+         "href":"http://localhost/posts?page=2&size=10&sort=created,desc&sort=title,asc"
+      },
+      "next":{  
+         "href":"http://localhost/posts?page=3&size=10&sort=created,desc&sort=title,asc"
+      },
+      "last":{  
+         "href":"http://localhost/posts?page=19&size=10&sort=created,desc&sort=title,asc"
+      }
+   },
+   "page":{  
+      "size":10,
+      "totalElements":200,
+      "totalPages":20,
+      "number":2
+   }
+}
+~~~
+
+page와 관련되어 있는 리소스 정보들 하이퍼 미디어 정보가 링크로 들어옵니다.
+이것이 HATEOAS 의 핵심입니다.
 
 # 링크
 
