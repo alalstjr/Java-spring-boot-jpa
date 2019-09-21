@@ -1049,8 +1049,8 @@ study.setName("Srping data jpa");
 ~~~
 
 이상태의 객체들이 `Transient 상태` 입니다. 
-`HibemateJ(하이버네이트), JPA 가 이 객체들을 전혀 모릅니다.`
-DB에 맵핑되어있는 레코드가 전혀 없습니다. 
+`새로 만들어진 객체여서 HibemateJ(하이버네이트), JPA 가 이 객체들을 전혀 모릅니다.`
+ID 값이 없어서 DB에 맵핑되어있는 레코드가 전혀 없습니다. 
 이 객체들은 이 자체로 DB에 들어갈지도 모르는 상태
 
 ## Persistent 상태
@@ -1113,6 +1113,9 @@ public void run(ApplicationArguments args) throws Exception {
 이런면에서 성능적인 장점이 보입니다.
 
 ## Detached 상태
+
+한번이라도 DB에 Persistent가 됐던 객체 즉 이 객체의 맵핑이 되는 레코드가 테이블에 존재하는 경우 
+해당 객체의 ID가 존재하는 경우
 
 트랜잭션이 끝나고 Session 밖으로 나왔을 때 JPA가 더이상 관리하지 않는 상태 이미 Session이 끝난 상태이기 때문에 1차 캐시, 더티채킹 등등 전혀 발생하지 않습니다. 
 
@@ -1569,6 +1572,7 @@ public class JpaRunner implements ApplicationRunner {
 ## JpaRepository 동작 원리
 
 원래는 Application main 클래스에 `@EnableJpaRepositories 어노테이션`이 붙어있어야 합니다. 
+하지만 Spring Boot 기본설정에 등록되어 있어서 붙이지 않아도 사용 가능합니다.
 
 > @EnableJpaRepositories 
 
@@ -3140,6 +3144,139 @@ public void createPosts() {
 
 page와 관련되어 있는 리소스 정보들 하이퍼 미디어 정보가 링크로 들어옵니다.
 이것이 HATEOAS 의 핵심입니다.
+
+# JpaRepository
+
+@EnableJpaRepositories
+- 스프링 부트 사용할 때는 사용하지 않아도 자동 설정 됨.
+- 스프링 부트 사용하지 않을 때는 @Configuration과 같이 사용.
+
+@Repository 애노테이션을 붙여야 하나 말아야 하나...
+- 안붙여도 됩니다.
+- 이미 붙어 있어요. 또 붙인다고 별일이 생기는건 아니지만 중복일 뿐입니다.
+
+스프링 @Repository
+- SQLExcpetion 또는 JPA 관련 예외를 스프링의 DataAccessException으로 변환 해준다.
+
+## JpaRepository.save()
+
+JpaRepository의 save()는 단순히 새 엔티티를 추가하는 메소드가 아닙니다.
+- Transient 상태의 객체라면 EntityManager.persist()
+- Detached 상태의 객체라면 EntityManager.merge()
+
+Transient인지 Detached 인지 어떻게 판단 하는가?
+- `엔티티의 @Id 프로퍼티를 찾는다.` 해당 프로퍼티가 null이면 Transient 상태로 판단하고 `id가 null이 아니면 Detached 상태로 판단`한다.
+- 엔티티가 Persistable 인터페이스를 구현하고 있다면 isNew() 메소드에 위임한다.
+- JpaRepositoryFactory를 상속받는 클래스를 만들고 getEntityInfomration()을 오버라이딩해서 자신이 원하는 판단 로직을 구현할 수도 있습니다.
+
+EntityManager.persist()
+- https://docs.oracle.com/javaee/6/api/javax/persistence/EntityManager.html#persist(java.lang.Object)
+- Persist() 메소드에 넘긴 그 엔티티 객체를 Persistent 상태로 변경합니다
+
+EntityManager.merge()
+- https://docs.oracle.com/javaee/6/api/javax/persistence/EntityManager.html#merge(java.lang.Object)
+- Merge() 메소드에 넘긴 그 엔티티의 복사본을 만들고, 그 복사본을 다시 Persistent 상태로 변경하고 그 복사본을 반환합니다.
+
+> PostRepositoryTest.java
+
+~~~
+@DataJpaTest
+class PostRepositoryTest {
+
+    @Autowired
+    private PostRepository postRepository;
+
+    @Test
+    public void save() {
+        // 1.
+        Post post = new Post();
+        post.setTitle("Spring");
+        Post savePost = postRepository.save(post); // persist
+
+        assertThat(entityManager.contains(post)).isTrue();
+        assertThat(entityManager.contains(savePost)).isTrue();
+        assertThat(savePost == post);
+
+        // 2.
+        Post postUpdate = new Post();
+        postUpdate.setId(post.getId());
+        postUpdate.setTitle("Spring Update");
+        Post updatedPost = postRepository.save(postUpdate); // merge
+
+        assertThat(entityManager.contains(updatedPost)).isTrue();
+        assertThat(entityManager.contains(postUpdate)).isFalse();
+        assertThat(updatedPost == postUpdate).isFalse();
+
+        List<Post> all = postRepository.findAll();
+        assertThat(all.size()).isEqualTo(1);
+    }`
+}
+~~~
+
+1번 객체는 `ID가 존재하지 않는 새로운 객체이므로 Persistent 상태`입니다.
+persist 로 넘겨준 post 인스턴스 객체가 entityManager에 영속화가 됩니다.
+
+~~~
+entityManager.contains(post).isTrue();
+~~~
+entityManager 에 post가 영속화 되어있는지 확인합니다.
+
+postRepository.save(post); 에서 항상 리턴되는 인스턴스가 있습니다.
+항상 `영속화 되어있는 객체를 리턴`합니다.
+결국 `savePost 와 post 는 같습니다. `
+같다는 것은 entityManager 가 savePost 도 캐싱 즉 가지고 있다는 것입니다.
+
+~~~
+entityManager.contains(post).isTrue(); 
+entityManager.contains(savePost)).isTrue(); 
+assertThat(savePost == post);
+~~~
+
+2번 객체는 `ID를 가지고 있기 때문에 merge 상태`입니다.
+그러면 UPDATE 쿼리가 발생하게 되고 `JPA 대신에 하이버네이트로 값을 UPDATE` 하게 됩니다.
+
+postRepository.save(postUpdate); merge의 내부적인 기능으로
+전달받은 파라미터의 postUpdate 인스턴스의 복사본을 만듭니다.
+`해당 복사본으로 DB에 영속화`를 하고 복사본을 Persistent 상태로 만들고 리턴합니다.
+
+~~~
+Post updatedPost = postRepository.save(postUpdate);
+~~~
+
+리턴받는 updatedPost 가 영속화가 됩니다.
+파라미터로 넘겼던 postUpdate 는 영속화가 되지 않습니다.
+이 둘의 객체는 같지도 않습니다.
+
+~~~
+assertThat(entityManager.contains(updatedPost)).isTrue();
+assertThat(entityManager.contains(postUpdate)).isFalse();
+assertThat(updatedPost == postUpdate).isFalse();
+~~~
+
+persist, merge 판단하지 말고 
+어떤한 경우라도 리턴값을 받는 것이 좋습니다.
+실수를 줄이기 위해선 무조건 리턴받은 인스턴스를 사용하면 됩니다.
+파라미터로 전달한 인스턴스를 계속해서 뒤에서 사용하면 안됩니다. 
+간단한 예제
+
+~~~
+Post postUpdate = new Post();
+postUpdate.setId(post.getId());
+postUpdate.setTitle("Spring Update");
+Post updatedPost = postRepository.save(postUpdate);
+
+postUpdate.setTitle("Spring No! Update!");
+~~~
+
+postUpdate 객체는 persist 상태가 아닙니다. 
+그러면 상태변화를 감지하지 않습니다.
+Test 결과 UPDATE 쿼리는 날라가지 않습니다.
+
+~~~
+updatedPost.setTitle("Spring No! Update!");
+~~~
+
+persist 상태 객체 를 사용하면 정상 UPDATE가 됩니다.
 
 # 링크
 
