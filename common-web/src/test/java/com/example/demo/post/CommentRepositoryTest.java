@@ -4,10 +4,6 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 
-import java.util.Optional;
-
-import static org.junit.jupiter.api.Assertions.*;
-
 @DataJpaTest
 class CommentRepositoryTest {
 
@@ -20,15 +16,18 @@ class CommentRepositoryTest {
     @Test
     public void getComment() {
         Post post = new Post();
-        post.setTitle("title");
+        post.setTitle("Spring");
         Post savePost = postRepository.save(post);
 
         Comment comment = new Comment();
-        comment.setComment("comment");
         comment.setPost(savePost);
+        comment.setUp(10);
+        comment.setDown(1);
         commentRepository.save(comment);
 
-        Optional<Comment> byId = commentRepository.findById(1l);
-        System.out.println(byId.get().getPost());
+        commentRepository.findByPost_Id(savePost.getId(), CommentSummary.class).forEach(c -> {
+           System.out.println("=======");
+           System.out.println(c.getVotes());
+        });
     }
 }

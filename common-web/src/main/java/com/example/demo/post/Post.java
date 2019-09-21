@@ -9,7 +9,7 @@ public class Post {
 
     @Id
     @GeneratedValue
-    private Long Id;
+    private Long id;
 
     private String title;
 
@@ -17,11 +17,11 @@ public class Post {
     private Date created;
 
     public Long getId() {
-        return Id;
+        return id;
     }
 
     public void setId(Long id) {
-        Id = id;
+        this.id = id;
     }
 
     public String getTitle() {

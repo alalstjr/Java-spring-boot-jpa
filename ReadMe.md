@@ -80,6 +80,10 @@
     - [30-3. Named Parameter와 SpEL](#Named-Parameter와-SpEL)
     - [30-4. UPDATE 쿼리 메소드](#UPDATE-쿼리-메소드)
 - [31. EntityGraph](#EntityGraph)
+- [32. Projection](#Projection)
+    - [32-1. Close 프로젝션](#Close-프로젝션)
+    - [32-2. Open 프로젝션](#Open-프로젝션)
+    - [32-3. Open 프로젝션을 Close으로](#Open-프로젝션을-Close으로)
 
 
 # 관계형 데이터베이스와 자바
@@ -538,7 +542,7 @@ public class JpaRunner implements ApplicationRunner {
     - 자바의 모든 Primitive Type(원시 타입)과 그 Reference Type(참조 타입) 을 사용할 수 있음.
         - Date랑 BigDecimal, Biginteger도 가용 가능.
     - 복합키를 만드는 맵핑하는 방법도 있습니다.
-    - 보통 Reference Type 을 사용하요 (Long Id) 식으로 만들어 구분을 명확하게 해줍니다. 테이블의 Id가 0인 레코드를 가진 Account 랑 새로만든 Account는 Reference가 Null 이라서 완전히 구분이 됩니다. Primitive 으로 (long Id)로 사용할 경우 Account는 Reference도 0 이기때문에 테이블의 Id 0 값과 겹칩니다.
+    - 보통 Reference Type 을 사용하요 (Long id) 식으로 만들어 구분을 명확하게 해줍니다. 테이블의 Id가 0인 레코드를 가진 Account 랑 새로만든 Account는 Reference가 Null 이라서 완전히 구분이 됩니다. Primitive 으로 (long id)로 사용할 경우 Account는 Reference도 0 이기때문에 테이블의 Id 0 값과 겹칩니다.
 
 - @GeneraledValue
     - `주키의 생성 방법을 맵핑`하는 어노테이션
@@ -2742,7 +2746,7 @@ public class Account {
 
     @Id
     @GeneratedValue
-    private Long Id;
+    private Long id;
 
     private String username;
 
@@ -2834,7 +2838,7 @@ public class Post {
 
     @Id
     @GeneratedValue
-    private Long Id;
+    private Long id;
 
     private String title;
 
@@ -3543,6 +3547,198 @@ attributePaths 로 post 받아 사용하면 됩니다.
 배열을 받아 사용할 수 도 있습니다.
 
 이 자체가 중복이 된다면 엔티티에 작성하면 됩니다.
+
+# Projection
+
+엔티티의 `일부 데이터만` 가져오기.
+
+- 인터페이스 기반 프로젝션
+    - Nested 프로젝션 가능.
+    - Closed 프로젝션
+        - 쿼리를 최적화 할 수 있다. 가져오려는 애트리뷰트가 뭔지 알고 있으니까.
+        - Java 8의 디폴트 메소드를 사용해서 연산을 할 수 있다.
+- Open 프로젝션
+    - @Value(SpEL)을 사용해서 연산을 할 수 있다. 스프링 빈의 메소드도 호출 가능.
+    - 쿼리 최적화를 할 수 없다. SpEL을 엔티티 대상으로 사용하기 때문에.
+
+- 클래스 기반 프로젝션
+    - DTO
+    - 롬복 @Value로 코드 줄일 수 있음
+
+- 다이나믹 프로젝션
+    - 프로젝션 용 메소드 하나만 정의하고 실제 프로젝션 타입은 타입 인자로 전달하기.
+
+~~~
+<T> List<T> findByPost_Id(Long id, Class<T> type);
+~~~
+
+## Close 프로젝션
+
+간단한 예제실습
+
+> Comment.java
+
+~~~
+@Entity
+public class Comment {
+
+    @Id
+    @GeneratedValue
+    private Long id;
+
+    private String comment;
+
+    @ManyToOne(fetch = FetchType.EAGER)
+    private Post post;
+
+    private int up;
+
+    private int down;
+
+    private boolean best;
+}
+~~~
+
+Comment 엔티티에서 가져와야할 정보는 comment, up, down 세가지 입니다.
+인터페이스 기반 프로젝션으로 가져오기
+
+> CommentSummary.java
+
+~~~
+public interface CommentSummary {
+    
+    String getComment();
+    int getUp();
+    int getDown();
+}
+~~~
+
+> CommentRepository.java
+
+~~~
+public interface CommentRepository extends JpaRepository<Comment, Long> {
+
+    List<CommentSummary> findByPost_Id(Long id);
+}
+~~~
+
+CommentSummary 타입으로 바꾸면 원하는 값만 출력됩니다.
+
+~~~
+Hibernate: 
+    select
+        comment0_.comment as col_0_0_,
+        comment0_.up as col_1_0_,
+        comment0_.down as col_2_0_ 
+    from
+        comment comment0_ 
+    left outer join
+        post post1_ 
+            on comment0_.post_id=post1_.id 
+    where
+        post1_.id=?
+~~~
+
+## Open 프로젝션
+
+> CommentSummary.java
+
+~~~
+public interface CommentSummary {
+
+    String getComment();
+    int getUp();
+    int getDown();
+
+    @Value("#{target.up + ' ' + target.down}")
+    String getVotes();
+}
+~~~
+
+target 은 comment 입니다. comment를 전부 가져와서 한정이 없어서 오픈 프로젝션입니다.
+성능 최적화는 없습니다. 다만 문자열을 만들어서 가져올 수 있다는 특징이 있습니다.
+
+> CommentRepositoryTest.java
+
+~~~
+@DataJpaTest
+class CommentRepositoryTest {
+
+    @Autowired
+    CommentRepository commentRepository;
+
+    @Autowired
+    PostRepository postRepository;
+
+    @Test
+    public void getComment() {
+        Post post = new Post();
+        post.setTitle("Spring");
+        Post savePost = postRepository.save(post);
+
+        Comment comment = new Comment();
+        comment.setPost(savePost);
+        comment.setUp(10);
+        comment.setDown(1);
+        commentRepository.save(comment);
+
+        commentRepository.findByPost_Id(savePost.getId()).forEach(c -> {
+           System.out.println("=======");
+           System.out.println(c.getVotes());
+           System.out.println("=======");
+        });
+    }
+}
+~~~
+
+~~~
+=======
+10 1
+=======
+~~~
+
+## Open 프로젝션을 Close으로
+
+이러한 장점을 살리면서 한정적으로 쿼리를 만드는 방법
+
+~~~
+public interface CommentSummary {
+
+    String getComment();
+
+    int getUp();
+
+    int getDown();
+
+    default String getVotes() {
+        return getUp() + "show!!" + getDown();
+    }
+}
+~~~
+
+~~~
+=======
+10show!!1
+=======
+~~~
+
+여러가지 조건을 넣어 사용하기 위해서 제네릭을 사용합니다.
+
+~~~
+public interface CommentRepository extends JpaRepository<Comment, Long> {
+
+    <T> List<T> findByPost_Id(Long id, Class<T> type);
+}
+~~~
+
+어떠한 타입의 프로젝션 클래스 타입을 줘야합니다.
+
+~~~
+commentRepository.findByPost_Id(savePost.getId(), CommentSummary.class).forEach(c -> {
+    System.out.println("=======");
+    System.out.println(c.getVotes());
+});
+~~~
 
 # 링크
 
