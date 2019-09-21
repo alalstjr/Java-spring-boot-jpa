@@ -41,6 +41,6 @@ class PostRepositoryTest {
     @Test
     public void findByTitle() {
         Post post = new Post();
-        List<Post> all = postRepository.findByTitle("Spring", Sort.by("title"))
+        List<Post> all = postRepository.findByTitle("Spring", Sort.by("title"));
     }
 }

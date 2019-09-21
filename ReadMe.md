@@ -75,10 +75,11 @@
 - [29. JpaRepository](#JpaRepository)
     - [29-1. JpaRepository.save()](#JpaRepository.save())
 - [30. 쿼리메소드](#쿼리메소드)
-    - [29-1. NamedQuery](#NamedQuery)
-    - [29-2. 쿼리 메소드 Sort](#쿼리-메소드-Sort)
-    - [29-3. Named Parameter와 SpEL](#Named-Parameter와-SpEL)
-    - [29-4. UPDATE 쿼리 메소드](#UPDATE-쿼리-메소드)
+    - [30-1. NamedQuery](#NamedQuery)
+    - [30-2. 쿼리 메소드 Sort](#쿼리-메소드-Sort)
+    - [30-3. Named Parameter와 SpEL](#Named-Parameter와-SpEL)
+    - [30-4. UPDATE 쿼리 메소드](#UPDATE-쿼리-메소드)
+- [31. EntityGraph](#EntityGraph)
 
 
 # 관계형 데이터베이스와 자바
@@ -3419,7 +3420,129 @@ Update 또는 Delete 쿼리 직접 정의하기
 int updateTitle(Long id, String title);
 ~~~
 
-# 
+# EntityGraph
+
+쿼리 메소드 마다 연관 관계의 Fetch 모드를 설정 할 수 있습니다.
+
+@NamedEntityGraph
+- @Entity에서 재사용할 여러 엔티티 그룹을 정의할 때 사용.
+
+@EntityGraph
+- @NamedEntityGraph에 정의되어 있는 엔티티 그룹을 사용 함.
+- 그래프 타입 설정 가능
+    - (기본값) FETCH: 설정한 엔티티 애트리뷰트는 EAGER 패치 나머지는 LAZY 패치.
+    - LOAD: 설정한 엔티티 애트리뷰트는 EAGER 패치 나머지는 기본 패치 전략 따름.
+
+> Comment.java
+
+~~~
+@Entity
+@NamedEntityGraph(name = "Comment.post", attributeNodes = @NamedAttributeNode("post"))
+public class Comment {
+
+    @Id
+    @GeneratedValue
+    private Long id;
+
+    private String comment;
+
+    @ManyToOne(fetch = FetchType.EAGER)
+    private Post post;
+}
+~~~
+
+> CommentRepository.java
+
+~~~
+public interface CommentRepository extends JpaRepository<Comment, Long> {
+
+}
+~~~
+
+> CommentRepositoryTest.java
+
+~~~
+@DataJpaTest
+class CommentRepositoryTest {
+
+    @Autowired
+    CommentRepository commentRepository;
+
+    @Test
+    public void getComment() {
+        commentRepository.findById(1l);
+    }
+}
+~~~
+
+결과를 확인해보면 Post 값까지 전부 가져옵니다.
+
+~~~
+select
+    comment0_.id as id1_0_0_,
+    comment0_.comment as comment2_0_0_,
+    comment0_.post_id as post_id3_0_0_,
+    post1_.id as id1_1_1_,
+    post1_.created as created2_1_1_,
+    post1_.title as title3_1_1_ 
+from
+    comment comment0_ 
+left outer join
+    post post1_ 
+        on comment0_.post_id=post1_.id 
+where
+    comment0_.id=?
+~~~
+
+이러한 이유는 @ManyToOne(fetch = FetchType.EAGER) 기본값이 EAGER 로 설정되어 있어서 그렇습니다.
+
+EAGER 값을 LAZY 로 바꾸면 comment 값만 가져옵니다.
+comment 인스턴스가 Persistent 상태여야지만 가능합니다.
+
+자 기본은 LAZY로 써서 comment만 선택하여 가져오지만 필요한 경우에 따라서는 
+EAGER 로 Post 값까지 가져오고 싶은경우가 있을 수 있습니다.
+
+~~~
+@Entity
+@NamedEntityGraph(name = "Comment.post", attributeNodes = @NamedAttributeNode("post"))
+public class Comment {
+    ...
+}
+~~~
+
+엔티티에 NamedEntityGraph 연관 관계의 이름을 주면 됩니다.
+해당 연관 관계의 사용은 CommentRepository 곳에서 커스텀하게 메소드를 만들어 사용하면 됩니다.
+
+> CommentRepository.java
+
+~~~
+public interface CommentRepository extends JpaRepository<Comment, Long> {
+    @EntityGraph(value = "Comment.post", type = EntityGraph.EntityGraphType.LOAD)
+    Optional<Comment> getById(Long id);
+}
+~~~
+
+@EntityGraph 연관 관계의 그룹의 이름을 작성해서 연결 하고 
+이것을 어떠한 타입으로 가져오는지 설정 가능하며 기본값은 Fetch 이며 
+설정한 엔티티 애트리뷰트는 EAGER 패치 나머지는 LAZY패치 이다.
+
+그리고 엔티티에 NamedEntityGraph 작성하여 연관 관계를 명시하지않고
+Repository 직접 명시하여 사용할 수 도 있습니다.
+
+~~~
+public interface CommentRepository extends JpaRepository<Comment, Long> {
+    @EntityGraph(attributePaths = "post")
+    Optional<Comment> locadCommentById(Long id);
+}
+~~~
+
+@EntityGraph(attributePaths = "post")
+attributePaths 로 post 받아 사용하면 됩니다.
+
+@EntityGraph(attributePaths = {"post"})
+배열을 받아 사용할 수 도 있습니다.
+
+이 자체가 중복이 된다면 엔티티에 작성하면 됩니다.
 
 # 링크
 
