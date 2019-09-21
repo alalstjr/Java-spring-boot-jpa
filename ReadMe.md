@@ -84,6 +84,9 @@
     - [32-1. Close 프로젝션](#Close-프로젝션)
     - [32-2. Open 프로젝션](#Open-프로젝션)
     - [32-3. Open 프로젝션을 Close으로](#Open-프로젝션을-Close으로)
+- [33. Specifications](#Specifications)
+- [34. Query by Example](#Query-by-Example)
+- [35. JPA: 트랜잭션](#JPA:-트랜잭션)
 
 
 # 관계형 데이터베이스와 자바
@@ -3739,6 +3742,91 @@ commentRepository.findByPost_Id(savePost.getId(), CommentSummary.class).forEach(
     System.out.println(c.getVotes());
 });
 ~~~
+
+# Specifications
+
+어떠한 `조건절을 스펙으로 정의`할 수 있습니다.
+코멘트로 예제를 들면 `베스트 코멘트 라는 하나의 스팩을 정의`하고 `좋아요가 10개 이상의 코멘트`를 또 다른 하나의 스팩으로 정의하고 이 둘을 조합해서 사용할 수 있습니다. `베스트이면서 좋아요가 10개 이상`인것 또는 `or 절로 연결해서 베스트 이거나 좋아요가 10개 이상인 코멘드` 이런식의 쿼리를 만들 수 있습니다.
+
+
+에릭 에반스의 책 DDD에서 언급하는 Specification 개념을 차용 한 것으로 QueryDSL의 Predicate와 비슷합니다.
+
+설정 하는 방법
+- https://docs.jboss.org/hibernate/stable/jpamodelgen/reference/en-US/html_single/
+- 의존성 설정
+- 플러그인 설정
+- IDE에 애노테이션 처리기 설정
+- 코딩 시작
+
+# Query by Example
+
+QBE는 필드 이름을 작성할 필요 없이(뻥) 단순한 인터페이스를 통해 동적으로 쿼리를 만드는 기능을 제공하는 사용자 친화적인 쿼리 기술입니다. (감이 1도 안잡히는거 이해합니다.. 코드를 봐야 이해하실꺼에요.)
+
+Example = Probe + ExampleMatcher
+- Probe는 필드에 어떤 값들을 가지고 있는 도메인 객체.
+- ExampleMatcher는 Prove에 들어있는 그 필드의 값들을 어떻게 쿼리할 데이터와 비교할지 정의한 것.
+- Example은 그 둘을 하나로 합친 것. 이걸로 쿼리를 함.
+
+장점
+- 별다른 코드 생성기나 애노테이션 처리기 필요 없음.
+- 도메인 객체 리팩토링 해도 기존 쿼리가 깨질 걱정하지 않아도 됨.(뻥)
+- 데이터 기술에 독립적인 API
+
+단점
+- nested 또는 프로퍼티 그룹 제약 조건을 못 만든다.
+- 조건이 제한적이다. 문자열은 starts/contains/ends/regex 가 가능하고 그밖에 propery는 값이 정확히 일치해야 한다.
+
+QueryByExampleExecutor
+
+https://docs.spring.io/spring-data/jpa/docs/current/reference/html/#query-by-example
+
+# JPA: 트랜잭션
+
+스프링 데이터 JPA가 제공하는 `Repository의 모든 메소드에는 기본적으로 @Transaction이 적용되어 있습니다.`
+
+스프링 트랜잭션은 메소드의 `가장 가까운 설정`이 우선시 됩니다.
+
+~~~
+@Transactional(readOnly = true)
+public class SimpleJpaRepository<T, ID> implements JpaRepositoryImplementation<T, ID> {
+
+    @Transactional
+    public void delete(T entity) { ... }
+
+    public Optional<T> findById(ID id) { ... }
+}
+~~~
+
+위 코드 같은경우 delete 메소드의 가장 가까운 설정은 @Transactional 이며
+findById 가장 가까운 설정은 클래스에 설정된 @Transactional(readOnly = true) 됩니다.
+
+스프링 @Transactional
+- 클래스, 인터페이스, 메소드에 사용할 수 있으며, 메소드에 가장 가까운 애노테이션이 우선 순위가 높다.
+- https://docs.spring.io/spring-framework/docs/current/javadoc-api/org/springframework/transaction/annotation/Transactional.html (반드시 읽어볼 것, 그래야 뭘 설정해서 쓸 수 있는지 알죠..)
+
+@Transactional 롤백 시점은 RuntimeException and Error 
+
+- Isolation
+    - 여러개의 트랜잭션이 동시에 DB에 접근했을때 해당 트랜잭션들을 어떻게 처리할것인가 동시에 처리할것인가 아니면 하나씩 접근하게 할것인가 의 대한 설정 이것을 어떠한 레벨로 주는거에 따라서 DB에 동시에 접근할 수 있는 발생하는 현상이 달라진다. 더티 리드 라던가 다시 조회했는데 똑같은 값이 안나온다던가 팬텀리드(값이 있었는데 사라진다던가 사라진값을 읽을때)
+
+- Propagation
+    - 트랜잭션을 전파 여부를 설정합니다. 트랜잭션 을 이어갈것인가 아니면 새로 만들것인가.
+
+- readOnly 
+    - 성능 최적화를 할 수 있는 여지가 생깁니다. 가급적이면 DB를 변경하는 오퍼레인션이 없으면 readOnly 틑 true 로 주는것이 좋습니다.
+
+JPA 구현체로 Hibernate를 사용할 때 트랜잭션을 readOnly를 사용하면 좋은 점
+- Flush 모드를 NEVER로 설정하여, Dirty checking을 하지 않도록 한다.
+
+Flush 모드 라는 것은 DB에 싱크를 하는 모드 언제 DB에 싱크를 할것인가
+기본값은 보통 커밋 할때 혹은 데이터를 불러오기전에 싱크(Flush)되도록 되어있습니다. 
+
+하지만 이것을 NEVER 로 설정하여 Flush DB동기화를 안하도록 합니다. 
+이유는 이 트랜젝션은 Read Only 이기 때문에 DB변경이 안일어날 트랜잭션이기 때문입니다.
+그래서 값을 가져오기만 하도록 알려주었습니다.
+그렇기 때문에 Persistent Context는 더티채킹을 할 필요가 없습니다.
+
+Persistent 상태의 객체들이 변경이 안될꺼니까 감지할 필요가 없습니다.
 
 # 링크
 
