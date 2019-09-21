@@ -3,6 +3,7 @@ package com.example.demo.post;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
+import org.springframework.data.domain.Sort;
 
 import javax.persistence.EntityManager;
 import javax.persistence.PersistenceContext;
@@ -35,5 +36,11 @@ class PostRepositoryTest {
 
         List<Post> all = postRepository.findAll();
         assertThat(all.size()).isEqualTo(1);
+    }
+
+    @Test
+    public void findByTitle() {
+        Post post = new Post();
+        List<Post> all = postRepository.findByTitle("Spring", Sort.by("title"))
     }
 }

@@ -72,6 +72,13 @@
     - [28-1. IntelliJ IDEA 2018.3 이전 HATEOAS](#IntelliJ-IDEA-2018.3-이전-HATEOAS)
     - [28-2. IntelliJ IDEA 2018.3 이후 HATEOAS](#IntelliJ-IDEA-2018.3-이후-HATEOAS)
     - [28-3. HATEOAS 테스트](#HATEOAS-테스트)
+- [29. JpaRepository](#JpaRepository)
+    - [29-1. JpaRepository.save()](#JpaRepository.save())
+- [30. 쿼리메소드](#쿼리메소드)
+    - [29-1. NamedQuery](#NamedQuery)
+    - [29-2. 쿼리 메소드 Sort](#쿼리-메소드-Sort)
+    - [29-3. Named Parameter와 SpEL](#Named-Parameter와-SpEL)
+    - [29-4. UPDATE 쿼리 메소드](#UPDATE-쿼리-메소드)
 
 
 # 관계형 데이터베이스와 자바
@@ -3277,6 +3284,142 @@ updatedPost.setTitle("Spring No! Update!");
 ~~~
 
 persist 상태 객체 를 사용하면 정상 UPDATE가 됩니다.
+
+# 쿼리메소드
+
+쿼리 생성하기
+- https://docs.spring.io/spring-data/jpa/docs/current/reference/html/#jpa.query-methods.query-creation
+- And, Or
+- Is, Equals
+- LessThan, LessThanEqual, GreaterThan, GreaterThanEqual
+- After, Before
+- IsNull, IsNotNull, NotNull
+- Like, NotLike
+- StartingWith, EndingWith, Containing
+- OrderBy
+- Not, In, NotIn
+- True, False
+- IgnoreCase
+
+- 쿼리 찾아쓰기
+    - 엔티티에 정의한 쿼리 찾아 사용하기 JPA Named 쿼리
+        - @NamedQuery
+        - @NamedNativeQuery
+
+리포지토리 메소드에 정의한 쿼리 사용하기
+    - @Query
+    - @Query(nativeQuery=true)
+
+## @NamedQuery
+
+> Post.java
+
+~~~
+@Entity
+@NamedQuery(name = "Post.findByTitle", query = "SELECT p FROM Post AS p WHERE p.title = ?1")
+public class Post {
+    ...
+}
+~~~
+
+NamedQuery 를 정의함으로서 Repository 에서 탐색 후 실행합니다.
+
+엔티티 객체가 지져분 해지기 때문에 권장하지 않습니다.
+
+## 쿼리 메소드 Sort
+
+이전과 마찬가지로 Pageable이나 Sort를 매개변수로 사용할 수 있는데, @Query와 같이 사용할 때 제약 사항이 하나 있습니다.
+
+Order by 절에서 함수를 호출하는 경우에는 Sort를 사용하지 못합니다. 그 경우에는 JpaSort.unsafe()를 사용 해야 합니다.
+- Sort는 그 안에서 사용한 `프로퍼티 또는 alias`가 엔티티에 없는 경우에는 예외가 발생합니다.
+- JpaSort.unsafe()를 사용하면 함수 호출을 할 수 있습니다.
+    - JpaSort.unsafe(“LENGTH(firstname)”);
+
+> PostRepository.java
+
+~~~
+public interface PostRepository extends JpaRepository<Post, Long> {
+
+    @Query("SELECT p FROM Post AS p WHERE p.title = ?1")
+    List<Post> findByTitle(String title, Sort sort);
+}
+~~~
+
+Sort sort 파라미터로 추가합니다.
+프로퍼티 또는 alias 만 올 수 있습니다.
+
+> findByTitle.java
+
+~~~
+@Test
+public void findByTitle() {
+    Post post = new Post();
+    List<Post> all = postRepository.findByTitle("Spring", Sort.by("title"));
+}
+~~~
+
+title 프로퍼티 이므로 sort 추가하여 정렬할 수 있습니다.
+
+예외의 상황
+
+~~~
+@Test
+public void findByTitle() {
+    Post post = new Post();
+    List<Post> all = postRepository.findByTitle("Spring", Sort.by("LENGTH(title)"));
+}
+~~~
+
+title 길이로 정렬 옵션 프로퍼티 또는 alias 아니라서 오류가 발생합니다.
+이를 우회해서 사용하려면 JpaSort 를 사용합니다.
+
+~~~
+@Test
+public void findByTitle() {
+    Post post = new Post();
+    List<Post> all = postRepository.findByTitle("Spring", JpaSort.unsafe("LENGTH(firstname)");
+}
+~~~
+
+## Named Parameter와 SpEL
+
+- Named Parameter
+    - @Query에서 참조하는 매개변수를 ?1, ?2 이렇게 채번으로 참조하는게 아니라 이름으로 :title 이렇게 참조하는 방법은 다음과 같습니다.
+
+~~~
+@Query("SELECT p FROM Post AS p WHERE p.title = :title")
+List<Post> findByTitle(@Param("title") String title, Sort sort);
+~~~
+
+- SpEL
+    - 스프링 표현 언어
+    - https://docs.spring.io/spring/docs/current/spring-framework-reference/core.html#expressions
+    - @Query에서 `엔티티 이름을 #{#entityName} 으로 표현`할 수 있습니다.
+
+~~~
+@Query("SELECT p FROM #{#entityName} AS p WHERE p.title = :title")
+List<Post> findByTitle(@Param("title") String title, Sort sort);
+~~~
+
+## UPDATE 쿼리 메소드
+
+쿼리 생성하기
+find...
+count...
+delete...
+흠.. update는 어떻게 하지?
+
+Update 또는 Delete 쿼리 직접 정의하기
+- @Modifying @Query
+- 추천하진 않습니다.
+
+~~~
+@Modifying(clearAutomatically = true, flushAutomatically = true)
+@Query("UPDATE Post p SET p.title = ?2 WHERE p.id = ?1")
+int updateTitle(Long id, String title);
+~~~
+
+# 
 
 # 링크
 
