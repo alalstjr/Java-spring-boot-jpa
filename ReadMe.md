@@ -86,7 +86,7 @@
     - [32-3. Open 프로젝션을 Close으로](#Open-프로젝션을-Close으로)
 - [33. Specifications](#Specifications)
 - [34. Query by Example](#Query-by-Example)
-- [35. JPA: 트랜잭션](#JPA:-트랜잭션)
+- [35. JPA 트랜잭션](#JPA-트랜잭션)
 
 
 # 관계형 데이터베이스와 자바
@@ -3780,7 +3780,7 @@ QueryByExampleExecutor
 
 https://docs.spring.io/spring-data/jpa/docs/current/reference/html/#query-by-example
 
-# JPA: 트랜잭션
+# JPA 트랜잭션
 
 스프링 데이터 JPA가 제공하는 `Repository의 모든 메소드에는 기본적으로 @Transaction이 적용되어 있습니다.`
 
