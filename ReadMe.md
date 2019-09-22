@@ -87,6 +87,7 @@
 - [33. Specifications](#Specifications)
 - [34. Query by Example](#Query-by-Example)
 - [35. JPA 트랜잭션](#JPA-트랜잭션)
+- [36. Auditing](#Auditing)
 
 
 # 관계형 데이터베이스와 자바
@@ -3827,6 +3828,150 @@ Flush 모드 라는 것은 DB에 싱크를 하는 모드 언제 DB에 싱크를 
 그렇기 때문에 Persistent Context는 더티채킹을 할 필요가 없습니다.
 
 Persistent 상태의 객체들이 변경이 안될꺼니까 감지할 필요가 없습니다.
+
+# Auditing
+
+엔티티에 변화가 언제 누구에 의해 발생한것을 `기록하는 기능`을합니다.
+
+아쉽지만 이 기능은 스프링 부트가 자동 설정 해주지 않습니다.
+- 메인 애플리케이션 위에 @EnableJpaAuditing 추가
+- 엔티티 클래스 위에 @EntityListeners(AuditingEntityListener.class) 추가
+- AuditorAware 구현체 만들기
+- @EnableJpaAuditing에 AuditorAware 빈 이름 설정하기.
+- https://docs.spring.io/spring-data/jpa/docs/1.7.0.DATAJPA-580-SNAPSHOT/reference/html/auditing.html
+
+JPA의 라이프 사이클 이벤트
+- https://docs.jboss.org/hibernate/orm/4.0/hem/en-US/html/listeners.html
+- @PrePersist
+- @PreUpdate
+
+
+> Account.java
+
+~~~
+@Entity
+public class Account {
+
+    @Id
+    @GeneratedValue
+    private Long id;
+
+    private String username;
+
+    private String password;
+}
+~~~
+
+> Comment.java
+
+~~~
+@Entity
+public class Comment {
+
+    @Id
+    @GeneratedValue
+    private Long id;
+
+    private String comment;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    private Post post;
+
+    private int up;
+
+    private int down;
+
+    private boolean best;
+
+    @CreatedDate
++    private Date created;
+
+    @CreatedBy
+    @ManyToOne
++    private Account createBy;
+
+    @LastModifiedDate
++    private Date update;
+
+    @LastModifiedBy
+    @ManyToOne
++    private Account updateBy;    
+}
+~~~
+
+언제 누구한테서 만들어졌나 언제 누구한테 수정이 됐는지 기록하는 컬럼을 추가
+
+@CreatedDate, @CreatedBy .. 어노테이션을 붙이고 Auditing 기능을 설정해야 합니다.
+
+~~~
+@SpringBootApplication
++ @EnableJpaAuditing
+public class Application {
+	public static void main(String[] args) {
+		SpringApplication.run(Application.class, args);
+	}
+}
+~~~
+
+Auditing 기능을 사용하는 엔티티에 EntityListeners 등록해줘야 합니다.
+
+~~~
+@Entity
++ @EntityListeners(AuditingEntityListener.class)
+public class Comment {
+    ...
+}
+~~~
+
+유저의 정보를 spring security를 활용하여 가져올수도 있습니다.
+
+~~~
+class SpringSecurityAuditorAware implements AuditorAware<User> {
+
+  public User getCurrentAuditor() {
+    Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+    if (authentication == null || !authentication.isAuthenticated()) {
+      return null;
+    }
+    return ((MyUserDetails) authentication.getPrincipal()).getUser();
+  }
+}
+~~~
+
+AuditorAware 라는 인터페이스를 구현해야 합니다.
+
+> AccountAuditorAware.java
+
+~~~
+@Service
+public class AccountAuditorAware implements AuditorAware<Account> {
+
+    @Override
+    public Optional<Account> getCurrentAuditor() {
+        System.out.println("looking for user");
+        return Optional.empty();
+    }
+}
+~~~
+
+@Service Bean으로 등록합니다.
+Bean의 기본 이름은 accountAuditorAware 기본 등록 됩니다.
+
+getCurrentAuditor 메소드가 호출이 되면 유저가 셋팅이 되는것이니 완료된것입니다.
+해당 메소드에 유저 정보만 가져와서 넣으면 완료
+
+AccountAuditorAware Bean 을 main 에 등록합니다.
+
+> Application.java
+
+~~~
+@SpringBootApplication
+@EnableJpaAuditing(auditorAwareRef = "accountAuditorAware")
+public class Application {
+    ...
+}
+~~~
+
 
 # 링크
 
