@@ -24,6 +24,7 @@
     - [10-1. 단방향 @ManyToOne Study 가 주인](#단방향-@ManyToOne-Study-가-주인) 
     - [10-2. 단방향 @OneToMany Account 가 주인](#단방향-@OneToMany-Account-가-주인)
     - [10-3. 양방향 관계](#양방향-관계)
+      - [10-3-1. 양방향 관계를 사용하는 이유](#양방향-관계를-사용하는-이유)
 - [11. JPA Cascade](#-JPA-Cascade)
     - [11-1. Transient 상태](#Transient-상태)
     - [11-2. Persistent 상태](#Persistent-상태)
@@ -393,7 +394,12 @@ application.properties 에 우리가 사용하는 DB에 접근할수 있는 정�
 
 > spring.jpa.hibernate.ddl-auto=create
 
-create 를 줘서 개발환경에 맞춰서 실행시 스키마를 새로 만들어주도록 명령합니다.
+- spring.jpa.hibernate.dll-auto : create, create-drop, update, validate, none 옵션을 설정할 수 있습니다.
+- create : JPA가 DB와 상호작용할 때 기존에 있던 스키마(테이블)을 삭제하고 새로 만드는 것을 뜻합니다.
+- create-drop : JPA 종료 시점에 기존에 있었던 테이블을 삭제합니다.
+- update : JPA에 의해 변경된 부분만 반영합니다.
+- validate : 엔티티와 테이블이 정상 매핑되어 있는지만 검증합니다.
+- none : 초기화 동작을 사용하지 않습니다.
 
 > spring.jpa.show-sql=true
 
@@ -761,6 +767,8 @@ owner_id에 대한 constraint(강제,속박)가 foreign key로 잡힙니다.
 
 이 관계에서의 `주인은 Study 엔티티` 입니다. 그 이유는 반대쪽의 엔티티 정보를 Study에서 참조하고 있어서 입니다.
 
+https://jdm.kr/blog/141#단방향_@OneToMany_예제-[SpringBoot-JPA-예제(@OneToMany-단방향)]
+
 ## 단방향 @OneToMany Account 가 주인
 
 > Study.java
@@ -1041,6 +1049,20 @@ public void removeStudy(Study study) {
     study.setOwner(null);
 }
 ~~~
+
+### 양방향 관계를 사용하는 이유
+
+DB 상으론 단방향이든 양방향이든 동일하지만, 객체 관점에서 보면 다릅니다.
+
+JPA를 사용하는 이유 중 하나가 객체지향적으로 프로그래밍을 하기 위함인데, 객체 순회를 어떻게 하느냐에 따라 단방향으로 만들지, 양방향으로 만들지 정해집니다.
+
+가령, Event와 Location이라는 엔티티가 있다고 가정해보죠. Event에서 Location은 당연히 참조해야 할테니 Event -> Location이라는 방향은 보통 레퍼런스로 정의하게 될 겁니다. 그런데 만들 다 보니 어떤 장소에서 열렸던 이벤트 목록도 자주 보여주게 된다면? 그럼 아에 둘의 관계를 양방향으로 만들고, Location을 읽어온 뒤에, Location에서 열렸던 List 목록을 객체로 순회하며 보여줄 수도 있겠죠.
+
+물론, 그렇게 하지않고, 쿼리를 이용해서 조회해올 수도 있겠지만, 가능한한 객체 중심으로 생각하고 코딩하기 편하게 해주는게 JPA의 목적이니 저라면 양방향 관계를 사용해서 그런 문제를 필긴 할 겁니다.
+
+즉, 애플리케이션의 요구 사항이나 기능에 따라 양방향, 단방향이 결정되는 것이지 항상 어느 한쪽이 더 좋다라고 이야기할 수는 없습니다.
+
+좋은 질문 감사합니다.
 
 # JPA Cascade
 
@@ -1960,7 +1982,7 @@ TitleContains 에 keyword 가 들어있는 모든 코멘트를 찾아주는 메�
 
 ~~~
 @Query("SELECT c FROM Comment AS c") - JPQL
-// @Query("SELECT c FROM Comment AS c", nativeQuery = true) - SQL
+// @Query(value = "SELECT c FROM Comment AS c", nativeQuery = true) - SQL
 List<Comment> findByTitleContains(String keyword);
 ~~~
 
@@ -3349,7 +3371,7 @@ Order by 절에서 함수를 호출하는 경우에는 Sort를 사용하지 못�
 ~~~
 public interface PostRepository extends JpaRepository<Post, Long> {
 
-    @Query("SELECT p FROM Post AS p WHERE p.title = ?1")
+    @Query("SELECT p FROM Post AS p WHERE p.title = ?")
     List<Post> findByTitle(String title, Sort sort);
 }
 ~~~
@@ -3673,6 +3695,7 @@ class CommentRepositoryTest {
 
     @Autowired
     PostRepository postRepository;
+sequence
 
     @Test
     public void getComment() {
