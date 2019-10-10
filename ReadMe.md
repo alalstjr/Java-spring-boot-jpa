@@ -2849,6 +2849,161 @@ binding parameter [2] as [VARCHAR] - [jpa%]
 
 java 코드로 넣어준대로 쿼리가 정상적으로 실행되고 값 또한 정상적으로 들어갔습니다.
 
+추가 참고링크
+
+https://jojoldu.tistory.com/372
+
+https://joont92.github.io/jpa/QueryDSL/
+
+http://www.querydsl.com/static/querydsl/4.0.1/reference/ko-KR/html_single/#d0e1988
+
+## QueryDSL OneToMany or ManyToMany 관계에서 Left Outer Join 이 필요할 경우
+
+아래 코드와 같이 (1:N 관계 그리고 N:N 관계) 의 Entity들이 있습니다.
+
+> University.java
+
+~~~
+@Getter
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
+@Entity
+public class University extends BaseEntity {
+
+    @Column(nullable = false)
+    private String uniSubject;
+
+    @Column(nullable = false)
+    @Type(type = "text")
+    private String uniContent;
+
+    @ManyToOne
+    private Account account;
+
+    @ManyToMany
+    private Set<Account> uniLike = new HashSet<>();
+
+    @Builder
+    public University(String uniSubject, String uniContent, Set<Account> uniLike, Account account) {
+        this.uniSubject = uniSubject;
+        this.uniContent = uniContent;
+        this.uniLike = uniLike;
+        this.account = account;
+    }
+}
+~~~
+
+> Account.java
+
+~~~
+@Getter
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
+@Entity
+public class Account extends BaseEntity {
+
+    @Column(nullable = false, unique = true)
+    private String userId;
+
+    @Column(nullable = false)
+    private String password;
+
+    @Column(nullable = false)
+    @Enumerated(value = EnumType.STRING)
+    private UserRole userRole = UserRole.USER;
+
+    @Builder
+    public Account(String userId, String password, String email, String[] urlList) {
+        this.userId = userId;
+        this.password = password;
+        this.email = email;
+        this.urlList = urlList;
+    }
+}
+~~~
+
+University 게시물의 좋아요를 클릭한 유저의 정보를 모은 `갯수`를 저장하는 uniLike length 컬럼
+
+University 게시물을 만든 유저의 정보를 민감 정보 `Password를 제외한 특정 값`을 가져오고 싶어합니다.
+
+> UniversityPublic.java
+
+~~~
+@Data
+@AllArgsConstructor
+public class UniversityPublic {
+
+    private String uniSubject;
+    private String uniContent;
+    private String account_userId;
+    private Integer uniLike;
+}
+~~~
+
+프로젝션을 해주기 위해서 University와 Account List가 묶인 DTO 클래스 UniversityPublic.java 만들어 줍니다.
+
+> UniversityRepositoryImpl.java
+
+~~~
+@Repository
+@RequiredArgsConstructor
+public class UniversityRepositoryImpl implements UniversityRepositoryDSL {
+
+    private final JPAQueryFactory queryFactory;
+
+    QUniversity qUniversity = QUniversity.university;
+
+    QAccount qAccount = QAccount.account;
+
+    @Override
+    public Page<UniversityPublic> findByPublicAll(Pageable pageable) {
+
+        // 1.
+        Map<University, List<Account>> transform = queryFactory
+                .from(qUniversity)
+                .leftJoin(qUniversity.uniLike, qAccount)
+                .transform(groupBy(qUniversity).as(list(qAccount)));
+
+        // 2.
+        List<UniversityPublic> results = transform.entrySet().stream()
+                .map(
+                        u -> new UniversityPublic(
+                                u.getKey().getUniSubject(),
+                                u.getKey().getUniContent(),
+                                u.getKey().getAccount().getUserId(),
+                                u.getValue().size()
+                        )
+                )
+                .collect(Collectors.toList());
+
+        return new PageImpl<>(results, pageable, results.size());
+    }
+}
+~~~
+
+에러가 발생하는 경우
+
+- 1. leftJoin을 활용한 Aggregation 결과 집합
+
+~~~
+queryFactory
+    .from(qUniversity)
+    .select(Projections.fields(
+        UniversityPublic.class,
+        qUniversity.uniSubject,
+        qUniversity.uniContent,
+        qUniversity.uniLike
+    ))
+    .from(qUniversity)
+    .fetchResults()
+~~~ 
+
+단순하게 Projections 하는식으로 UniversityPublic 넣게되면 집합 실패로 인해
+List 로 조회되는 qUniversity.uniLike 를 Aggregation 하지 못해서 . 라는 불문명한 컬럼 사용
+에러가 발생하게 됩니다.
+
+- 2. 반환된 결과를 transform.entrySet().stream() 활용하여 DTO 에 맞춰 넣어주어 결과를 반환합니다.
+
+https://jojoldu.tistory.com/342?category=637935 - [Querydsl-에서-OneToMany-관계에서-Left-Outer-Join-이-필요할-경우]
+
 # Web DomainClassConverter
 
 - 도메인 클래스 컨버터
