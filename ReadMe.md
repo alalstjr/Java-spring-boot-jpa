@@ -2,9 +2,7 @@
 # Spring JPA 공부 노트
 --------------------
 
-
 # 목차
-
 
 - [1. 관계형 데이터베이스와 자바](#관계형-데이터베이스와-자바)
 - [2. DB관리 Dokcer 생성](#DB관리-Dokcer-생성)
@@ -89,6 +87,7 @@
 - [34. Query by Example](#Query-by-Example)
 - [35. JPA 트랜잭션](#JPA-트랜잭션)
 - [36. Auditing](#Auditing)
+- [37. 배포시 스키마 관리](#배포시-스키마-관리)
 
 
 # 관계형 데이터베이스와 자바
@@ -4150,7 +4149,64 @@ public class Application {
 }
 ~~~
 
+# 배포시 스키마 관리
+
+프로젝트를 개발중에는 spring.jpa.hibernate.ddl-auto 설정을 update 로 해서 추가되거나 수정되는 컬럼을 자동으로 업데이트 하도록 하여 개발하면 되지만
+실제 배포할때는 안정성이 많이 떨어지므로 ddl 설정을 validate 로 바꿔서 검증만 하도록 하고 스키마를 직접 추가하는 식으로 해주면 안정성이 높아집니다.
+
+DDL(Data Definition Language)  - 데이터 정의어 란? 데이터베이스를 정의하는 언어이며, 데이터리를 생성, 수정, 삭제하는 등의 데이터의 전체의 골격을 결정하는 역할을 하는 언어 입니다.
+
+~~~
+spring.jpa.hibernate.ddl-auto=validate
+spring.jpa.generate-ddl=false
+~~~
+
+프로퍼티 설정을 validate 하고 테이블 컬럼을 실행하면 기존에 없는 컬럼데이터가 추가되어 오류가 발생합니다.
+이럴때는 해당 추가 컬럼 부분의 Test code로 작성 후 실행하면 보여지는 스키마를 복사 후
+
+> /resources/application.properties/schema.sql
+
+파일 생성 후 출력된 스키마를 복사후 실행하면 자동으로 추가됩니다.
+
+# 데이터베이스 마이그레이션
+
+Flyway와 Liquibase가 대표적인데, 지금은 Flyway를 사용하겠습니다. 
+https://docs.spring.io/spring-boot/docs/2.0.3.RELEASE/reference/htmlsingle/#howto-execute-flyway-database-migrations-on-startup
+
+- 마이그레이션 디렉토리
+    - db/migration 또는 db/migration/{vendor}
+    - spring.flyway.locations로 변경 가능
+
+> \resources\db\migration
+
+- 마이그레이션 파일 이름
+    - V숫자__이름.sql
+    - V는 꼭 대문자로.
+    - 숫자는 순차적으로 (타임스탬프 권장)
+    - 숫자와 이름 사이에 언더바 두 개.
+    - 이름은 가능한 서술적으로.
+
+파일 명 "V1__" 까지는 고정입니다. V1__init.sql
+뒤에 세미콜론(;)을 추가해서 문법은 항상 맞춰줘야 합니다. 
+
+~~~
+alter table if exists account;
+    add constraint FKmk0d74hv9qdgtlbffild2630b;
+    foreign key (photo_id);
+    references file;
+~~~
+
+프로퍼티 설정을 검증만 하도록 바꿔줍니다.
+
+~~~
+spring.jpa.hibernate.ddl-auto=validate
+spring.jpa.generate-ddl=false
+~~~
+
+만약 다름 db 수정이 일어나면 V1__init.sql 를 절때로 수정하면 안 됩니다.
+"V2__" 식으로 추가해야 합니다.
 
 # 링크
 
 https://subicura.com/2017/01/19/docker-guide-for-beginners-1.html - [doker란?]
+https://server-talk.tistory.com/159 - [SQL의-종류-DDL,-DML,-DCL-이란?]
